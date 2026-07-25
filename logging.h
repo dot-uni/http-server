@@ -58,10 +58,10 @@ inline constexpr LogLevel LogLevel::Trace{3, "TRACE"};
 
 struct LogRecord {
     LogLevel level;
-    std::string message="none";
-    std::string file="none";
+    std::string_view message="none";
+    std::string_view file="none";
     int line=0;
-    std::string func="none";
+    std::string_view func="none";
     std::string timepoint=timeToString(std::chrono::system_clock::now());
 };
 
@@ -73,7 +73,7 @@ struct ILogFormatter {
 
 class SingleLineFormatter final : public ILogFormatter {
 public:
-    SingleLineFormatter(){}
+    SingleLineFormatter() = default;
     ~SingleLineFormatter() = default;
     std::string format(const LogRecord& r) const noexcept override;
 private:
@@ -84,7 +84,7 @@ private:
 
 struct JsonFormatter final : public ILogFormatter {
 public:
-    JsonFormatter(){}
+    JsonFormatter() = default;
     ~JsonFormatter() = default;
     std::string format(const LogRecord& r) const noexcept override;
 private:
@@ -116,8 +116,8 @@ private:
 
 class FileSink final : public ILogSink {
 public:
-    FileSink(const std::string& file_name, std::shared_ptr<ILogFormatter> formatter);
-    FileSink(const std::string& file_name) : FileSink(file_name, std::make_shared<SingleLineFormatter>()) {}
+    FileSink(std::string_view file_name, std::shared_ptr<ILogFormatter> formatter);
+    FileSink(std::string_view file_name) : FileSink(file_name, std::make_shared<SingleLineFormatter>()) {}
     ~FileSink() { file_.close(); }
     bool log(const LogRecord& record) noexcept override;
     bool flush() noexcept override;
@@ -130,15 +130,21 @@ private:
 
 class Logger final {
 public:
-    Logger(){}
+    Logger() = default;
+    Logger(const Logger& logger) noexcept;
+    Logger(Logger&& logger) noexcept;
+    ~Logger() = default;
+    Logger& operator=(const Logger& logger) noexcept;
+    Logger& operator=(Logger&& logger) noexcept;
+
     bool addSink(std::shared_ptr<ILogSink> sink) noexcept;
     bool log(const LogRecord& record) noexcept;
-    bool log(const LogLevel& level, const std::string& message) noexcept;
-    bool log(const LogLevel& level, const std::string& message, const std::string& file) noexcept;
-    bool log(const LogLevel& level, const std::string& message, 
-             const std::string& file, int line) noexcept;
-    bool log(const LogLevel& level, const std::string& message, 
-             const std::string& file, int line, const std::string& func) noexcept;
+    bool log(const LogLevel& level, std::string_view message) noexcept;
+    bool log(const LogLevel& level, std::string_view message, std::string_view file) noexcept;
+    bool log(const LogLevel& level, std::string_view message, 
+             std::string_view file, int line) noexcept;
+    bool log(const LogLevel& level, std::string_view message, 
+             std::string_view file, int line, std::string_view func) noexcept;
     bool flush() noexcept;
 private:
     std::mutex mtx_;

@@ -16,6 +16,8 @@
 #include <string_view>
 #include <memory>
 #include <mutex>
+#include <sstream>
+#include <type_traits>
 
 #include "logging.h"
 
@@ -47,6 +49,11 @@ class Server {
 public:
     Server();
     virtual ~Server();
+    Server(Server&& serv) noexcept;
+    Server(const Server&) = delete;
+    Server& operator=(Server&& serv) noexcept;
+    Server& operator=(const Server&) = delete;
+
     bool listen();
     bool listen(const char* host, const char* port=DEF_HTTP_PORT, int max_connections=DEF_MAX_CONNECTIONS, int bufsize=DEF_RECEPTION_BUF_SIZE);
     bool continueListen();
@@ -56,17 +63,17 @@ protected:
     bool buildSocket(const char* host, const char* port) noexcept;
     void freeAddrInfo(addrinfo*& servinfo) noexcept;
     void closeSocket(int& sockfd) noexcept;
-    template <typename... Opt> bool setSockOptions(int sockfd, Opt&&... args) noexcept;
+    template <typename... Opts> bool setSockOptions(int sockfd, Opts&&... args) noexcept;
     template <typename Opt> bool applyOption(int sockfd, Opt&& arg, int opt) noexcept;
     bool listenInternal(int max_connections, int bufsize);
-    bool acceptConnection(int bufsize);
-
+    int acceptConnection(int bufsize);
+    void moveImpl(Server& serv) noexcept;
+    std::string receiveMessage(int sockfd, int bufsize);
 private:
     int sockfd_ = kEmptyDescriptor;
     addrinfo* servinfo_ = nullptr;
     addrinfo hints_;
     logrr::Logger logger_;
-    bool is_decommissioned_ = false;
     bool is_running_ = false;
     std::mutex mtx_;
 };

@@ -81,7 +81,7 @@ bool ConsoleSink::log(const LogRecord& record) noexcept {
     return static_cast<bool>(out);
 }
 
-FileSink::FileSink(const std::string& file_name, std::shared_ptr<ILogFormatter> formatter) {
+FileSink::FileSink(std::string_view file_name, std::shared_ptr<ILogFormatter> formatter) {
     file_.open(file_name, std::ios::app);
     if (!file_.is_open()) {
         throw std::runtime_error(fmt::format("Failed to open file '{}': {}", 
@@ -122,6 +122,25 @@ bool FileSink::flush() noexcept {
     return true;
 }
 
+Logger::Logger(const Logger& logger) noexcept {
+    sinks_ = logger.sinks_;
+}
+
+Logger::Logger(Logger&& logger) noexcept {
+    sinks_ = std::move(logger.sinks_);
+}
+
+Logger& Logger::operator=(const Logger& logger) noexcept {
+    if (&logger == this) return *this;
+    sinks_ = logger.sinks_;
+    return *this;
+}
+
+Logger& Logger::operator=(Logger&& logger) noexcept {
+    sinks_ = std::move(logger.sinks_);
+    return *this;
+}
+
 bool Logger::addSink(std::shared_ptr<ILogSink> sink) noexcept {
     // std::lock_guard<std::mutex> lock(mtx_);
     const char* sink_name = sink->name();
@@ -159,21 +178,21 @@ bool Logger::log(const LogRecord& record) noexcept {
     return success;
 }
 
-bool Logger::log(const LogLevel& level, const std::string& message) noexcept {
+bool Logger::log(const LogLevel& level, std::string_view message) noexcept {
     return log(LogRecord{level, message});
 }
 
-bool Logger::log(const LogLevel& level, const std::string& message, const std::string& file) noexcept {
+bool Logger::log(const LogLevel& level, std::string_view message, std::string_view file) noexcept {
     return log(LogRecord{level, message, file});
 }
 
-bool Logger::log(const LogLevel& level, const std::string& message, 
-         const std::string& file, int line) noexcept {
+bool Logger::log(const LogLevel& level, std::string_view message, 
+         std::string_view file, int line) noexcept {
     return log(LogRecord{level, message, file, line});
 }
 
-bool Logger::log(const LogLevel& level, const std::string& message, 
-         const std::string& file, int line, const std::string& func) noexcept {
+bool Logger::log(const LogLevel& level, std::string_view message, 
+         std::string_view file, int line, std::string_view func) noexcept {
     return log(LogRecord{level, message, file, line, func});
 }
 
