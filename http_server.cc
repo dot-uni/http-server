@@ -1,7 +1,8 @@
 #include "http_server.h"
 
+
 namespace {
-    void* getInAddr(sockaddr *sa) {
+    void* getSinAddr(sockaddr *sa) {
         if (sa->sa_family == AF_INET) {
             return &(((sockaddr_in*)sa)->sin_addr);
         }
@@ -11,36 +12,25 @@ namespace {
         return nullptr;
     }
 
-    std::optional<std::string> getAddr(sockaddr* addr) {
+    uint16_t getSinPort(sockaddr *sa) {
+        if (sa->sa_family == AF_INET) {
+            return (((sockaddr_in*)sa)->sin_port);
+        }
+        else if (sa->sa_family == AF_INET6) {
+            return (((sockaddr_in6*)sa)->sin6_port);
+        }
+        return 0;
+    }
+
+    std::string getIpAddr(sockaddr* addr) {
         char str_addr[INET6_ADDRSTRLEN];
         const char* success;
 
-        success = inet_ntop(addr->sa_family, getInAddr(addr), str_addr, sizeof(str_addr));
+        success = inet_ntop(addr->sa_family, getSinAddr(addr), str_addr, sizeof(str_addr));
         if (success == nullptr) {
-            return std::nullopt;
+            return "";
         }
         return std::string(str_addr);
-    }
-
-    template <typename, typename=void>
-    struct isStreamableImpl : std::false_type {};
-
-    template <typename T> 
-    struct isStreamableImpl<
-        T,
-        std::void_t<decltype(std::declval<std::ostringstream&>() << std::declval<T>())>
-    > : std::true_type {};
-
-    template <typename T>
-    inline constexpr bool isStreamable = isStreamableImpl<T>::value;
-
-    template <typename... Args>
-    std::string concat(Args&&... args) {
-        static_assert((isStreamable<Args> && ...), 
-            "concat requires all arguments to support operator<<");
-        std::ostringstream oss;
-        (oss << ... << args);
-        return oss.str();
     }
 } // namespace
 
@@ -49,7 +39,7 @@ namespace http {
 
 Server::Server() {    
     logger_.addSink(std::make_shared<logrr::ConsoleSink>());
-    logger_.log(logrr::LogLevel::Info, "The \"Server\" constructor was called: Server object created");
+    logger_.log(logrr::LogLevel::Info, "The Server constructor was called: Server object created");
 
     memset(&hints_, 0, sizeof(hints_));
     hints_.ai_family = AF_UNSPEC;
@@ -61,7 +51,7 @@ Server::Server() {
 Server::~Server() {
     freeAddrInfo(servinfo_);
     closeSocket(sockfd_);
-    logger_.log(logrr::LogLevel::Info, "The \"Server\" destructor was called: Server has shut down");
+    logger_.log(logrr::LogLevel::Info, "The Server destructor was called: Server has shut down");
 }
 
 void Server::moveImpl(Server& serv) noexcept {
@@ -95,7 +85,15 @@ bool Server::buildSocket(const char* host, const char* port) noexcept {
 
     success = getaddrinfo(host, port, &hints_, &servinfo);
     if (success != 0) {
-        logger_.log(logrr::LogLevel::Error, gai_strerror(success), __FILE__, __LINE__, __PRETTY_FUNCTION__);
+        logger_.log(logrr::LogRecord{
+            .level = logrr::LogLevel::Error,
+            .message = "getaddrinfo() failed",
+            .file = __FILE__,
+            .line = __LINE__,
+            .fields {
+                {"gai_strerror", gai_strerror(success)},
+            }
+        });
         return false;
     }
 
@@ -103,7 +101,16 @@ bool Server::buildSocket(const char* host, const char* port) noexcept {
         next = p->ai_next;
         sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
         if (sockfd == -1) {
-            logger_.log(logrr::LogLevel::Error, strerror(errno), __FILE__, __LINE__, __PRETTY_FUNCTION__);
+            logger_.log(logrr::LogRecord{
+                .level = logrr::LogLevel::Error,
+                .message = "socket() failed",
+                .file = __FILE__,
+                .line = __LINE__,
+                .fields {
+                    {"errno", errno},
+                    {"errno_str", strerror(errno)}
+                }
+            });
             freeaddrinfo(p);
             p = next;
             continue;
@@ -111,7 +118,16 @@ bool Server::buildSocket(const char* host, const char* port) noexcept {
 
         success = setSockOptions(sockfd, SO_REUSEADDR, SO_REUSEPORT);
         if (success == -1) {
-            logger_.log(logrr::LogLevel::Error, strerror(errno), __FILE__, __LINE__, __PRETTY_FUNCTION__);
+            logger_.log(logrr::LogRecord{
+                .level = logrr::LogLevel::Error,
+                .message = "setSockOptions() failed",
+                .file = __FILE__,
+                .line = __LINE__,
+                .fields {
+                    {"errno", errno},
+                    {"errno_str", strerror(errno)}
+                }
+            });
             freeaddrinfo(p);
             closeSocket(sockfd);
             return false;
@@ -119,7 +135,16 @@ bool Server::buildSocket(const char* host, const char* port) noexcept {
 
         success = bind(sockfd, p->ai_addr, p->ai_addrlen);
         if (success == -1) {
-            logger_.log(logrr::LogLevel::Error, strerror(errno), __FILE__, __LINE__, __PRETTY_FUNCTION__);
+            logger_.log(logrr::LogRecord{
+                .level = logrr::LogLevel::Error,
+                .message = "bind() failed",
+                .file = __FILE__,
+                .line = __LINE__,
+                .fields {
+                    {"errno", errno},
+                    {"errno_str", strerror(errno)}
+                }
+            });
             freeaddrinfo(p);
             closeSocket(sockfd);
             p = next;
@@ -164,15 +189,23 @@ template <typename Opt> bool Server::applyOption(int sockfd, Opt&& arg, int opt)
     int success;
     success = setsockopt(sockfd, SOL_SOCKET, arg, &opt, sizeof(opt));
     if (success == -1) {
-        logger_.log(logrr::LogLevel::Error, strerror(errno), __FILE__, __LINE__, __PRETTY_FUNCTION__);
+        logger_.log(logrr::LogRecord{
+            .level = logrr::LogLevel::Error,
+            .message = "setsockopt() failed",
+            .file = __FILE__,
+            .line = __LINE__,
+            .fields {
+                {"errno", errno},
+                {"errno_str", strerror(errno)}
+            }
+        });
         return false;
     }
     return true;
 }
 
 bool Server::listenInternal(int max_connections, int bufsize) {
-    int cli_sock;
-    std::string buf;
+    int success;
 
     if (max_connections <= 0) {
         logger_.log(logrr::LogLevel::Error, "The number of connections must be greater than 0", __FILE__, __LINE__, __PRETTY_FUNCTION__);
@@ -184,66 +217,157 @@ bool Server::listenInternal(int max_connections, int bufsize) {
         return false;
     }
 
-    int success;
     success = ::listen(sockfd_, max_connections);
     if (success == -1) {
-        logger_.log(logrr::LogLevel::Error, strerror(errno), __FILE__, __LINE__, __PRETTY_FUNCTION__);
+        logger_.log(logrr::LogRecord{
+            .level = logrr::LogLevel::Error,
+            .message = "listen() failed",
+            .file = __FILE__,
+            .line = __LINE__,
+            .fields {
+                {"errno", errno},
+                {"errno_str", strerror(errno)}
+            }
+        });
         return false;
     }
 
     logger_.log(logrr::LogLevel::Info, "Server waiting for connections...");
+
+    std::string req;
+    ClientConnection client;
     while(true) {
-        cli_sock = acceptConnection(bufsize);
-        if (cli_sock == -1) {
-            logger_.log(logrr::LogLevel::Error, "Failed to create client socket");
-            continue;
-        }
-        buf = receiveMessage(cli_sock, bufsize);
-        logger_.log(logrr::LogLevel::Info, "Server received:");
-        logger_.log(logrr::LogLevel::Info, concat('\n', buf));
+        client = acceptConnection();
+        if (client.sockfd == -1) continue;
+        logger_.log(logrr::LogRecord{
+            .level = logrr::LogLevel::Info,
+            .message = "Client connected",
+            .fields {
+                {"client_ip", client.ip},
+                {"client_port", client.port}
+            }
+        });
 
-        closeSocket(cli_sock);
-        logger_.log(logrr::LogLevel::Info, "Client socket was closed");
+        req = receiveMessage(client, bufsize);
+        parseReq(client, req);
 
+        closeSocket(client.sockfd);
+        logger_.log(logrr::LogRecord{
+            .level = logrr::LogLevel::Info,
+            .message = "Client socket was closed",
+            .fields {
+                {"client_ip", client.ip},
+                {"client_port", client.port}
+            }
+        });
         break;
     }
     return true;
 }
 
-int Server::acceptConnection(int bufsize) {
+ClientConnection Server::acceptConnection() {
     int cli_sock;
     socklen_t cli_size;
     sockaddr_storage cli_addr;
-    std::optional<std::string> cli_ip;
-        
+    std::string cli_ip;
+    uint16_t cli_port;
+    
     cli_size = sizeof(cli_addr);
     cli_sock = accept(sockfd_, (sockaddr*)&cli_addr, &cli_size);
+
     if (cli_sock == -1) {
-        logger_.log(logrr::LogLevel::Error, strerror(errno), __FILE__, __LINE__, __PRETTY_FUNCTION__);
-        return -1;
+        logger_.log(logrr::LogRecord{
+            .level = logrr::LogLevel::Error,
+            .message = "accept() failed",
+            .file = __FILE__,
+            .line = __LINE__,
+            .fields {
+                {"errno", errno},
+                {"errno_str", strerror(errno)}
+            }
+        }); 
+        return ClientConnection{-1, "", 0};
     }
       
-    cli_ip = getAddr((sockaddr*)&cli_addr);
-    if (cli_ip) {
-        logger_.log(logrr::LogLevel::Info, concat("Server got connection from: ", *cli_ip));
-    }
-    else {
-        logger_.log(logrr::LogLevel::Warning, "The client's string address was not received", __FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
-    return cli_sock;
+    cli_ip = getIpAddr((sockaddr*)&cli_addr);
+    cli_port = ntohs(getSinPort((sockaddr*)&cli_addr));
+
+    return ClientConnection{cli_sock, cli_ip, cli_port};
 }
 
-std::string Server::receiveMessage(int sockfd, int bufsize) {
-    int numbytes;
+std::string Server::receiveMessage(ClientConnection& client, int bufsize) {
+    int numbytes, resbytes = 0;
     char buf[bufsize];
+    std::string request;
 
-    numbytes = recv(sockfd, buf, sizeof(buf), 0);
-    logger_.log(logrr::LogLevel::Info, concat("Server received ", numbytes, " bytes"));
-    return std::string(buf);
+    while(true) {
+        numbytes = recv(client.sockfd, buf, sizeof(buf), 0);
+        if (numbytes == -1) {
+            logger_.log(logrr::LogRecord{
+                .level = logrr::LogLevel::Error,
+                .message = "Unnable to recieve message",
+                .file = __FILE__,
+                .line = __LINE__,
+                .fields {
+                    {"errno", errno},
+                    {"errno_str", strerror(errno)}
+                }
+            }); 
+            break;
+        }
+        else if (numbytes == 0) {
+            logger_.log(logrr::LogLevel::Warning, "Client disconnected");
+            break; 
+        }
+        resbytes += numbytes;
+        buf[numbytes] = '\0';
+        request.append(buf);
+
+        logger_.log(logrr::LogRecord{
+            .level = logrr::LogLevel::Info,
+            .message = concat(numbytes, " bytes were received"),
+            .fields {
+                {"client_ip", client.ip},
+                {"client_port", client.port}
+            }
+        });
+        if (numbytes < bufsize) break;
+    } 
+    logger_.log(logrr::LogRecord{
+        .level = logrr::LogLevel::Info,
+        .message = concat("A total of ", resbytes, " bytes received from the client"),
+        .fields {
+            {"client_ip", client.ip},
+            {"client_port", client.port}
+        }
+    });
+    return request;
 }
 
 bool Server::addSink(std::shared_ptr<logrr::ILogSink> sink) noexcept {
     return logger_.addSink(sink);
+}
+
+bool Server::parseReq(ClientConnection& client, std::string& req) {
+    int end_targets = req.find("\r\n");
+    int end_headers = req.find("\r\n\r\n");
+
+    if (end_targets == std::string::npos || end_headers == std::string::npos) {
+        logger_.log(logrr::LogRecord{
+            .level = logrr::LogLevel::Warning,
+            .message = "Invalid request format",
+            .fields {
+                {"client_ip", client.ip},
+                {"client_port", client.port},
+                {"status_code", 400}
+            }
+        });
+        return false;
+    }
+    std::string targets = req.substr(0, end_targets);
+    std::string headers = req.substr(end_targets,  end_headers);
+    std::string body = req.substr(end_headers);
+    return true;
 }
 
 } // namespace http

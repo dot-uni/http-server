@@ -19,31 +19,37 @@
 #include <sstream>
 #include <type_traits>
 
+#include "concat.h"
 #include "logging.h"
 
 #define DEF_HTTP_PORT "8080"
 #define DEF_MAX_CONNECTIONS 20
-#define DEF_RECEPTION_BUF_SIZE 32768
-
+#define DEF_RECEPTION_BUF_SIZE 100
+//32768
 
 namespace http {
 
 constexpr int kInvalidSocket = -1;
 constexpr int kEmptyDescriptor = 0;
 
-#if 0
+
 struct Request {
     std::string method;
     std::string path;
     std::string version;
-    std::map<std::string, std::string> header_map;
+    std::map<std::string, std::string> headers;
     std::string body;
 };
 
 struct Response {
     
 };
-#endif
+
+struct ClientConnection {
+    int sockfd;
+    std::string ip;
+    uint16_t port;
+};
 
 class Server {
 public:
@@ -66,9 +72,10 @@ protected:
     template <typename... Opts> bool setSockOptions(int sockfd, Opts&&... args) noexcept;
     template <typename Opt> bool applyOption(int sockfd, Opt&& arg, int opt) noexcept;
     bool listenInternal(int max_connections, int bufsize);
-    int acceptConnection(int bufsize);
+    ClientConnection acceptConnection();
     void moveImpl(Server& serv) noexcept;
-    std::string receiveMessage(int sockfd, int bufsize);
+    std::string receiveMessage(ClientConnection& client, int bufsize);
+    bool parseReq(ClientConnection& client, std::string& req);
 private:
     int sockfd_ = kEmptyDescriptor;
     addrinfo* servinfo_ = nullptr;

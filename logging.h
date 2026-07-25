@@ -2,6 +2,7 @@
 #define LOGGING_H
 
 
+#include <variant>
 #include <vector>
 #include <mutex>
 #include <string>
@@ -13,6 +14,7 @@
 #include <ctime>
 #include <iomanip>
 
+#include "concat.h"
 
 namespace {
     std::string timeToString(std::chrono::system_clock::time_point tp) {
@@ -56,13 +58,21 @@ inline constexpr LogLevel LogLevel::Debug{2, "DEBUG"};
 inline constexpr LogLevel LogLevel::Trace{3, "TRACE"};
 
 
+using LogValue = std::variant<std::string, int64_t, double, bool>;
+
+struct LogField {
+    std::string key;
+    LogValue value;
+};
+
 struct LogRecord {
     LogLevel level;
-    std::string_view message="none";
-    std::string_view file="none";
+    std::string_view message="";
+    std::string_view file="";
     int line=0;
-    std::string_view func="none";
-    std::string timepoint=timeToString(std::chrono::system_clock::now());
+    std::string_view func="";
+    std::string timepoint = timeToString(std::chrono::system_clock::now());
+    std::vector<LogField> fields = {};
 };
 
 struct ILogFormatter {
@@ -71,25 +81,19 @@ struct ILogFormatter {
 };
 
 
-class SingleLineFormatter final : public ILogFormatter {
+class SingleLineFormatter : public ILogFormatter {
 public:
     SingleLineFormatter() = default;
-    ~SingleLineFormatter() = default;
+    virtual ~SingleLineFormatter() = default;
     std::string format(const LogRecord& r) const noexcept override;
-private:
-    std::string formatCompact(const LogRecord& r) const noexcept;
-    std::string formatDetailed(const LogRecord& r) const noexcept;
 };
 
 
-struct JsonFormatter final : public ILogFormatter {
+struct JsonFormatter : public ILogFormatter {
 public:
     JsonFormatter() = default;
-    ~JsonFormatter() = default;
+    virtual ~JsonFormatter() = default;
     std::string format(const LogRecord& r) const noexcept override;
-private:
-    std::string formatCompact(const LogRecord& r) const noexcept;
-    std::string formatDetailed(const LogRecord& r) const noexcept;
 };
 
 
@@ -117,7 +121,7 @@ private:
 class FileSink final : public ILogSink {
 public:
     FileSink(std::string_view file_name, std::shared_ptr<ILogFormatter> formatter);
-    FileSink(std::string_view file_name) : FileSink(file_name, std::make_shared<SingleLineFormatter>()) {}
+    FileSink(std::string_view file_name) : FileSink(file_name, std::make_shared<JsonFormatter>()) {}
     ~FileSink() { file_.close(); }
     bool log(const LogRecord& record) noexcept override;
     bool flush() noexcept override;

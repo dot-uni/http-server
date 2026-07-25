@@ -1,0 +1,12 @@
+{"timepoint":"2026-07-26 01:52:03","level":"INFO","message":"The listen method was called, host=0.0.0.0","file":"","line":"0","func":""}
+{"timepoint":"2026-07-26 01:52:03","level":"INFO","message":"New socket successfully created","file":"","line":"0","func":""}
+{"timepoint":"2026-07-26 01:52:03","level":"INFO","message":"Server waiting for connections...","file":"","line":"0","func":""}
+{"timepoint":"2026-07-26 01:52:06","level":"INFO","message":"Client connected","file":"","line":"0","func":"""fields":{"client_ip":"127.0.0.1","client_port":"50737"}}
+{"timepoint":"2026-07-26 01:52:06","level":"INFO","message":"100 bytes were received","file":"","line":"0","func":"""fields":{"client_ip":"127.0.0.1","client_port":"50737"}}
+{"timepoint":"2026-07-26 01:52:06","level":"INFO","message":"100 bytes were received","file":"","line":"0","func":"""fields":{"client_ip":"127.0.0.1","client_port":"50737"}}
+{"timepoint":"2026-07-26 01:52:06","level":"INFO","message":"100 bytes were received","file":"","line":"0","func":"""fields":{"client_ip":"127.0.0.1","client_port":"50737"}}
+{"timepoint":"2026-07-26 01:52:06","level":"INFO","message":"100 bytes were received","file":"","line":"0","func":"""fields":{"client_ip":"127.0.0.1","client_port":"50737"}}
+{"timepoint":"2026-07-26 01:52:06","level":"INFO","message":"43 bytes were received","file":"","line":"0","func":"""fields":{"client_ip":"127.0.0.1","client_port":"50737"}}
+{"timepoint":"2026-07-26 01:52:06","level":"INFO","message":"A total of 443 bytes received from the client","file":"","line":"0","func":"""fields":{"client_ip":"127.0.0.1","client_port":"50737"}}
+{"timepoint":"2026-07-26 01:52:06","level":"INFO","message":"Client socket was closed","file":"","line":"0","func":"""fields":{"client_ip":"127.0.0.1","client_port":"50737"}}
+{"timepoint":"2026-07-26 01:52:06","level":"INFO","message":"The Server destructor was called: Server has shut down","file":"","line":"0","func":""}
