@@ -37,9 +37,9 @@ namespace {
 
 namespace http {
 
-Server::Server() {    
+HttpServer::HttpServer() {    
     logger_.addSink(std::make_shared<logrr::ConsoleSink>());
-    logger_.log(logrr::LogLevel::Info, "The Server constructor was called: Server object created");
+    logger_.log(logrr::LogLevel::Info, "The HttpServer constructor was called: HttpServer object created");
 
     memset(&hints_, 0, sizeof(hints_));
     hints_.ai_family = AF_UNSPEC;
@@ -48,13 +48,13 @@ Server::Server() {
     hints_.ai_flags = AI_PASSIVE;
 }
 
-Server::~Server() {
+HttpServer::~HttpServer() {
     freeAddrInfo(servinfo_);
-    closeSocket(sockfd_);
-    logger_.log(logrr::LogLevel::Info, "The Server destructor was called: Server has shut down");
+    closeConnection(sockfd_);
+    logger_.log(logrr::LogLevel::Info, "The HttpServer destructor was called: HttpServer has shut down");
 }
 
-void Server::moveImpl(Server& serv) noexcept {
+void HttpServer::moveImpl(HttpServer& serv) noexcept {
     sockfd_ = std::move(serv.sockfd_);
     servinfo_ = std::move(serv.servinfo_);
     hints_ = std::move(serv.hints_);
@@ -62,24 +62,24 @@ void Server::moveImpl(Server& serv) noexcept {
     is_running_ = std::move(serv.is_running_);
 }
 
-Server::Server(Server&& serv) noexcept {
+HttpServer::HttpServer(HttpServer&& serv) noexcept {
     moveImpl(serv);
 }
 
-Server& Server::operator=(Server&& serv) noexcept {
+HttpServer& HttpServer::operator=(HttpServer&& serv) noexcept {
     if (&serv == this) return *this;
     freeAddrInfo(servinfo_);
-    closeSocket(sockfd_);
+    closeConnection(sockfd_);
     moveImpl(serv);
     return *this;
 }
 
-bool Server::listen(const char* host, const char* port, int max_connections, int bufsize) {
+bool HttpServer::listen(const char* host, const char* port, int max_connections, int bufsize) {
     logger_.log(logrr::LogLevel::Info, concat("The listen method was called, host=", host));
     return buildSocket(host, port) && listenInternal(max_connections, bufsize);
 }
 
-bool Server::buildSocket(const char* host, const char* port) noexcept {
+bool HttpServer::buildSocket(const char* host, const char* port) noexcept {
     int success, sockfd, opt = 1;
     addrinfo *servinfo, *p, *next;
 
@@ -129,7 +129,7 @@ bool Server::buildSocket(const char* host, const char* port) noexcept {
                 }
             });
             freeaddrinfo(p);
-            closeSocket(sockfd);
+            closeConnection(sockfd);
             return false;
         }
 
@@ -146,7 +146,7 @@ bool Server::buildSocket(const char* host, const char* port) noexcept {
                 }
             });
             freeaddrinfo(p);
-            closeSocket(sockfd);
+            closeConnection(sockfd);
             p = next;
             continue;
         }
@@ -154,23 +154,23 @@ bool Server::buildSocket(const char* host, const char* port) noexcept {
     }
 
     if (!p) {
-        logger_.log(logrr::LogLevel::Error, "Server failed to bind", __FILE__, __LINE__, __PRETTY_FUNCTION__);
+        logger_.log(logrr::LogLevel::Error, "HttpServer failed to bind", __FILE__, __LINE__, __PRETTY_FUNCTION__);
         return false;
     }
 
-    closeSocket(sockfd_);
+    closeConnection(sockfd_);
     servinfo_ = std::move(p);
     sockfd_ = std::move(sockfd);
     logger_.log(logrr::LogLevel::Info, "New socket successfully created");
     return true;
 }
 
-void Server::freeAddrInfo(addrinfo*& servinfo) noexcept {
+void HttpServer::freeAddrInfo(addrinfo*& servinfo) noexcept {
     freeaddrinfo(servinfo);
     servinfo = nullptr;
 }
 
-void Server::closeSocket(int& sockfd) noexcept {
+void HttpServer::closeConnection(int& sockfd) noexcept {
     if (sockfd > 0) {
         close(sockfd);
         sockfd = kEmptyDescriptor;
@@ -178,27 +178,14 @@ void Server::closeSocket(int& sockfd) noexcept {
     else sockfd = kInvalidSocket;
 }
 
-void Server::closeConectToClient(ClientConnection& client) noexcept {
-    closeSocket(client.sockfd);
-    logger_.log(logrr::LogRecord{
-        .level = logrr::LogLevel::Info,
-        .message = "Client socket was closed",
-        .fields {
-            {"client_ip", client.ip},
-            {"client_port", client.port},
-            {"user_agent", client.user_agent}
-        }
-    });
-}
-
 template <typename... Opts>
-bool Server::setSockOptions(int sockfd, Opts&&... args) noexcept {
+bool HttpServer::setSockOptions(int sockfd, Opts&&... args) noexcept {
     int opt = 1;
     bool success = (applyOption<Opts>(sockfd, std::forward<Opts>(args), opt), ...);
     return success;
 }
 
-template <typename Opt> bool Server::applyOption(int sockfd, Opt&& arg, int opt) noexcept {
+template <typename Opt> bool HttpServer::applyOption(int sockfd, Opt&& arg, int opt) noexcept {
     int success;
     success = setsockopt(sockfd, SOL_SOCKET, arg, &opt, sizeof(opt));
     if (success == -1) {
@@ -217,7 +204,7 @@ template <typename Opt> bool Server::applyOption(int sockfd, Opt&& arg, int opt)
     return true;
 }
 
-bool Server::listenInternal(int max_connections, int bufsize) {
+bool HttpServer::listenInternal(int max_connections, int bufsize) {
     int success;
 
     if (max_connections <= 0) {
@@ -245,7 +232,7 @@ bool Server::listenInternal(int max_connections, int bufsize) {
         return false;
     }
 
-    logger_.log(logrr::LogLevel::Info, "Server waiting for connections...");
+    logger_.log(logrr::LogLevel::Info, "HttpServer waiting for connections...");
 
     std::string raw_req;
     ClientConnection client;
@@ -262,23 +249,17 @@ bool Server::listenInternal(int max_connections, int bufsize) {
                 {"client_port", client.port}
             }
         });
-
-        raw_req = getRawReq(client, bufsize);
-        req = parseReq(client, raw_req);
-        if (req.method.empty()) {
+        
+        HttpConnection connection(client, bufsize);
+        if (!connection.recvReq()) {
             continue;
         }
-        client.user_agent = req.headers["User-Agent"];
-        // resp = createResp(client, req);
-        // sendResp(client, resp);
-
-        closeConectToClient(client);
         break;
     }
     return true;
 }
 
-ClientConnection Server::acceptConnection() {
+ClientConnection HttpServer::acceptConnection() {
     int cli_sock;
     socklen_t cli_size;
     sockaddr_storage cli_addr;
@@ -308,112 +289,7 @@ ClientConnection Server::acceptConnection() {
     return ClientConnection{cli_sock, cli_ip, cli_port};
 }
 
-std::string Server::getRawReq(ClientConnection& client, int bufsize) {
-    int numbytes, resbytes = 0;
-    char buf[bufsize];
-    std::string request;
-
-    while(true) {
-        numbytes = recv(client.sockfd, buf, sizeof(buf), 0);
-        if (numbytes == -1) {
-            logger_.log(logrr::LogRecord{
-                .level = logrr::LogLevel::Error,
-                .message = "Unnable to recieve message",
-                .file = __FILE__,
-                .line = __LINE__,
-                .fields {
-                    {"errno", errno},
-                    {"errno_str", strerror(errno)}
-                }
-            }); 
-            break;
-        }
-        else if (numbytes == 0) {
-            logger_.log(logrr::LogLevel::Warning, "Client disconnected");
-            break; 
-        }
-        resbytes += numbytes;
-        buf[numbytes] = '\0';
-        request.append(buf);
-
-        logger_.log(logrr::LogRecord{
-            .level = logrr::LogLevel::Info,
-            .message = concat(numbytes, " bytes were received"),
-            .fields {
-                {"client_ip", client.ip},
-                {"client_port", client.port}
-            }
-        });
-        if (numbytes < bufsize) break;
-    } 
-    logger_.log(logrr::LogRecord{
-        .level = logrr::LogLevel::Info,
-        .message = concat("A total of ", resbytes, " bytes received from the client"),
-        .fields {
-            {"client_ip", client.ip},
-            {"client_port", client.port}
-        }
-    });
-    return request;
-}
-
-Request Server::parseReq(ClientConnection& client, std::string& req) {
-    Request temp;
-    int end_targets = req.find("\r\n");
-    int end_headers = req.find("\r\n\r\n");
-
-    if (end_targets == std::string::npos || end_headers == std::string::npos) {
-        logger_.log(logrr::LogRecord{
-        .level = logrr::LogLevel::Warning,
-        .message = "Invalid request format",
-        .fields {
-            {"client_ip", client.ip},
-            {"client_port", client.port},
-            {"status_code", logrr::StatusCode::BAD_REQUEST},
-            {"status_code_mess", codeToStr(logrr::StatusCode::BAD_REQUEST)}
-        }
-        });
-        return temp;
-    }
-    std::string targets = req.substr(0, end_targets);
-    std::string headers = req.substr(end_targets+2,  end_headers);
-    temp.body = req.substr(end_headers+4);
-
-    int first_space = targets.find(' ');
-    int second_space = targets.find(' ', first_space+1);
-    temp.method = targets.substr(0, first_space);
-    temp.path = targets.substr(first_space, second_space);
-    temp.version = targets.substr(second_space);
-
-    int beg = 0;
-    int end = headers.find("\r\n"), colon;
-    if (end == std::string::npos) return temp;
-    while(true) {
-        colon = headers.find(":", beg);
-        if (colon == std::string::npos || colon > end) {
-            beg = end + 2;
-            end = headers.find("\r\n", beg);
-            if (end == std::string::npos) break;
-            continue;
-        }
-
-        std::string key = headers.substr(beg, colon - beg);
-        std::string value = headers.substr(colon + 1, end - colon - 1);
-
-        size_t val_start = value.find_first_not_of(" \t");
-        if (val_start != std::string::npos) value = value.substr(val_start);
-
-        temp.headers[key] = value;
-
-        beg = end + 2;
-        end = headers.find("\r\n", beg);
-        if (end == std::string::npos) break;
-    }
-
-    return temp;
-}
-
-bool Server::addSink(std::shared_ptr<logrr::ILogSink> sink) noexcept {
+bool HttpServer::addSink(std::shared_ptr<logrr::ILogSink> sink) noexcept {
     return logger_.addSink(sink);
 }
 

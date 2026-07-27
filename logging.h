@@ -72,7 +72,7 @@ constexpr const char* codeToStr(StatusCode code) {
         case StatusCode::ACCEPTED:       return "Accepted";
         case StatusCode::BAD_REQUEST:    return "Bad Request";
         case StatusCode::NOT_FOUND:      return "Not Found";
-        case StatusCode::INTERNAL_ERROR: return "Internal Server Error";
+        case StatusCode::INTERNAL_ERROR: return "Internal HttpServer Error";
         default:                         return "Unknown";
     }
 }

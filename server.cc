@@ -5,6 +5,6 @@
 */
 
 int main() {    
-    http::Server server;
+    http::HttpServer server;
     server.listen();
 }   

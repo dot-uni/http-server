@@ -7,5 +7,5 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(fmt CONFIG REQUIRED)
 
-add_executable(server server.cc logging.cc http_server.cc)
+add_executable(server server.cc logging.cc http_server.cc http_connection.cc)
 target_link_libraries(server PRIVATE fmt::fmt)

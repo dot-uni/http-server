@@ -10,7 +10,6 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <arpa/inet.h>
-#include <map>
 #include <sys/wait.h>
 #include <signal.h>
 #include <string_view>
@@ -21,46 +20,20 @@
 
 #include "concat.h"
 #include "logging.h"
-
-#define DEF_HTTP_PORT "8080"
-#define DEF_MAX_CONNECTIONS 20
-#define DEF_RECEPTION_BUF_SIZE 32768
+#include "http_connection.h"
+#include "client_structures.h"
 
 namespace http {
 
-constexpr int kInvalidSocket = -1;
-constexpr int kEmptyDescriptor = 0;
 
-struct Request {
-    std::string method="";
-    std::string path="";
-    std::string version="";
-    std::map<std::string, std::string> headers;
-    std::string body="";
-};
-
-struct Response {
-    std::string version="";
-    logrr::StatusCode status;
-    std::map<std::string, std::string> headers;
-    std::string body="";
-};
-
-struct ClientConnection {
-    int sockfd = kInvalidSocket;
-    std::string ip = "";
-    uint16_t port = 0;
-    std::string user_agent="";
-};
-
-class Server {
+class HttpServer {
 public:
-    Server();
-    virtual ~Server();
-    Server(Server&& serv) noexcept;
-    Server(const Server&) = delete;
-    Server& operator=(Server&& serv) noexcept;
-    Server& operator=(const Server&) = delete;
+    HttpServer();
+    virtual ~HttpServer();
+    HttpServer(HttpServer&& serv) noexcept;
+    HttpServer(const HttpServer&) = delete;
+    HttpServer& operator=(HttpServer&& serv) noexcept;
+    HttpServer& operator=(const HttpServer&) = delete;
 
     bool listen();
     bool listen(const char* host, const char* port=DEF_HTTP_PORT, int max_connections=DEF_MAX_CONNECTIONS, int bufsize=DEF_RECEPTION_BUF_SIZE);
@@ -70,17 +43,12 @@ public:
 protected:
     bool buildSocket(const char* host, const char* port) noexcept;
     void freeAddrInfo(addrinfo*& servinfo) noexcept;
-    void closeSocket(int& sockfd) noexcept;
-    void closeConectToClient(ClientConnection& client) noexcept;
+    void closeConnection(int& sockfd) noexcept;
     template <typename... Opts> bool setSockOptions(int sockfd, Opts&&... args) noexcept;
     template <typename Opt> bool applyOption(int sockfd, Opt&& arg, int opt) noexcept;
     bool listenInternal(int max_connections, int bufsize);
     ClientConnection acceptConnection();
-    void moveImpl(Server& serv) noexcept;
-    std::string getRawReq(ClientConnection& client, int bufsize);
-    Request parseReq(ClientConnection& client, std::string& req);
-    // Response createResp(ClientConnection& client, Request& req);
-    // bool sendResp(ClientConnection& client, Response& resp);
+    void moveImpl(HttpServer& serv) noexcept;
 private:
     int sockfd_ = kEmptyDescriptor;
     addrinfo* servinfo_ = nullptr;
@@ -90,8 +58,8 @@ private:
     std::mutex mtx_;
 };
 
-inline bool Server::listen() { return listen("0.0.0.0"); }
-inline void Server::stopListen() noexcept { closeSocket(sockfd_); }
+inline bool HttpServer::listen() { return listen("0.0.0.0"); }
+inline void HttpServer::stopListen() noexcept { closeConnection(sockfd_); }
 
 } // namespace http
 
