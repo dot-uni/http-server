@@ -24,31 +24,33 @@
 
 #define DEF_HTTP_PORT "8080"
 #define DEF_MAX_CONNECTIONS 20
-#define DEF_RECEPTION_BUF_SIZE 100
-//32768
+#define DEF_RECEPTION_BUF_SIZE 32768
 
 namespace http {
 
 constexpr int kInvalidSocket = -1;
 constexpr int kEmptyDescriptor = 0;
 
-
 struct Request {
-    std::string method;
-    std::string path;
-    std::string version;
+    std::string method="";
+    std::string path="";
+    std::string version="";
     std::map<std::string, std::string> headers;
-    std::string body;
+    std::string body="";
 };
 
 struct Response {
-    
+    std::string version="";
+    logrr::StatusCode status;
+    std::map<std::string, std::string> headers;
+    std::string body="";
 };
 
 struct ClientConnection {
-    int sockfd;
-    std::string ip;
-    uint16_t port;
+    int sockfd = kInvalidSocket;
+    std::string ip = "";
+    uint16_t port = 0;
+    std::string user_agent="";
 };
 
 class Server {
@@ -69,13 +71,16 @@ protected:
     bool buildSocket(const char* host, const char* port) noexcept;
     void freeAddrInfo(addrinfo*& servinfo) noexcept;
     void closeSocket(int& sockfd) noexcept;
+    void closeConectToClient(ClientConnection& client) noexcept;
     template <typename... Opts> bool setSockOptions(int sockfd, Opts&&... args) noexcept;
     template <typename Opt> bool applyOption(int sockfd, Opt&& arg, int opt) noexcept;
     bool listenInternal(int max_connections, int bufsize);
     ClientConnection acceptConnection();
     void moveImpl(Server& serv) noexcept;
-    std::string receiveMessage(ClientConnection& client, int bufsize);
-    bool parseReq(ClientConnection& client, std::string& req);
+    std::string getRawReq(ClientConnection& client, int bufsize);
+    Request parseReq(ClientConnection& client, std::string& req);
+    // Response createResp(ClientConnection& client, Request& req);
+    // bool sendResp(ClientConnection& client, Response& resp);
 private:
     int sockfd_ = kEmptyDescriptor;
     addrinfo* servinfo_ = nullptr;

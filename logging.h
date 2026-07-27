@@ -57,8 +57,27 @@ inline constexpr LogLevel LogLevel::Info{1, "INFO"};
 inline constexpr LogLevel LogLevel::Debug{2, "DEBUG"};
 inline constexpr LogLevel LogLevel::Trace{3, "TRACE"};
 
+enum class StatusCode : uint16_t {
+    OK = 200,
+    ACCEPTED = 201,
+    BAD_REQUEST = 400,
+    UNAUTHORIZED = 401,
+    NOT_FOUND = 404,
+    INTERNAL_ERROR = 500,
+};
 
-using LogValue = std::variant<std::string, int64_t, double, bool>;
+constexpr const char* codeToStr(StatusCode code) {
+    switch (code) {
+        case StatusCode::OK:             return "OK";
+        case StatusCode::ACCEPTED:       return "Accepted";
+        case StatusCode::BAD_REQUEST:    return "Bad Request";
+        case StatusCode::NOT_FOUND:      return "Not Found";
+        case StatusCode::INTERNAL_ERROR: return "Internal Server Error";
+        default:                         return "Unknown";
+    }
+}
+
+using LogValue = std::variant<std::string, uint16_t, int64_t, double, bool, StatusCode>;
 
 struct LogField {
     std::string key;

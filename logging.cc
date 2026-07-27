@@ -11,6 +11,14 @@ struct fmt::formatter<std::variant<Ts...>> {
     }
 };
 
+template <>
+struct fmt::formatter<logrr::StatusCode> : fmt::formatter<uint16_t> {
+    auto format(logrr::StatusCode code, format_context& ctx) const {
+        return fmt::formatter<uint16_t>::format(
+            static_cast<uint16_t>(code), ctx);
+    }
+};
+
 namespace logrr {
 
 std::string SingleLineFormatter::format(const LogRecord& r) const noexcept {
@@ -18,13 +26,13 @@ std::string SingleLineFormatter::format(const LogRecord& r) const noexcept {
     try {
         base = fmt::format("{} [{}] – {}", 
             r.timepoint, r.level.name(), r.message);
-        if (r.file != "") {
+        if (!r.file.empty()) {
             base += fmt::format(R"(, "file": "{}")", r.file);
         }
         if (r.line) {
             base += fmt::format(R"(, "line": {})", r.line);
         }
-        if (r.func != "") {
+        if (!r.func.empty()) {
             base += fmt::format(R"(, "func": {})", r.func);
         }
         for (auto&& field : r.fields) {

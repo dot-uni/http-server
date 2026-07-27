@@ -100,7 +100,7 @@ bool Server::buildSocket(const char* host, const char* port) noexcept {
     for (p = servinfo; p != nullptr;) {
         next = p->ai_next;
         sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-        if (sockfd == -1) {
+        if (sockfd == kInvalidSocket) {
             logger_.log(logrr::LogRecord{
                 .level = logrr::LogLevel::Error,
                 .message = "socket() failed",
@@ -178,6 +178,19 @@ void Server::closeSocket(int& sockfd) noexcept {
     else sockfd = kInvalidSocket;
 }
 
+void Server::closeConectToClient(ClientConnection& client) noexcept {
+    closeSocket(client.sockfd);
+    logger_.log(logrr::LogRecord{
+        .level = logrr::LogLevel::Info,
+        .message = "Client socket was closed",
+        .fields {
+            {"client_ip", client.ip},
+            {"client_port", client.port},
+            {"user_agent", client.user_agent}
+        }
+    });
+}
+
 template <typename... Opts>
 bool Server::setSockOptions(int sockfd, Opts&&... args) noexcept {
     int opt = 1;
@@ -234,11 +247,13 @@ bool Server::listenInternal(int max_connections, int bufsize) {
 
     logger_.log(logrr::LogLevel::Info, "Server waiting for connections...");
 
-    std::string req;
+    std::string raw_req;
     ClientConnection client;
+    Request req;
+    Response resp;
     while(true) {
         client = acceptConnection();
-        if (client.sockfd == -1) continue;
+        if (client.sockfd == kInvalidSocket) continue;
         logger_.log(logrr::LogRecord{
             .level = logrr::LogLevel::Info,
             .message = "Client connected",
@@ -248,18 +263,16 @@ bool Server::listenInternal(int max_connections, int bufsize) {
             }
         });
 
-        req = receiveMessage(client, bufsize);
-        parseReq(client, req);
+        raw_req = getRawReq(client, bufsize);
+        req = parseReq(client, raw_req);
+        if (req.method.empty()) {
+            continue;
+        }
+        client.user_agent = req.headers["User-Agent"];
+        // resp = createResp(client, req);
+        // sendResp(client, resp);
 
-        closeSocket(client.sockfd);
-        logger_.log(logrr::LogRecord{
-            .level = logrr::LogLevel::Info,
-            .message = "Client socket was closed",
-            .fields {
-                {"client_ip", client.ip},
-                {"client_port", client.port}
-            }
-        });
+        closeConectToClient(client);
         break;
     }
     return true;
@@ -275,7 +288,7 @@ ClientConnection Server::acceptConnection() {
     cli_size = sizeof(cli_addr);
     cli_sock = accept(sockfd_, (sockaddr*)&cli_addr, &cli_size);
 
-    if (cli_sock == -1) {
+    if (cli_sock == kInvalidSocket) {
         logger_.log(logrr::LogRecord{
             .level = logrr::LogLevel::Error,
             .message = "accept() failed",
@@ -286,7 +299,7 @@ ClientConnection Server::acceptConnection() {
                 {"errno_str", strerror(errno)}
             }
         }); 
-        return ClientConnection{-1, "", 0};
+        return ClientConnection();
     }
       
     cli_ip = getIpAddr((sockaddr*)&cli_addr);
@@ -295,7 +308,7 @@ ClientConnection Server::acceptConnection() {
     return ClientConnection{cli_sock, cli_ip, cli_port};
 }
 
-std::string Server::receiveMessage(ClientConnection& client, int bufsize) {
+std::string Server::getRawReq(ClientConnection& client, int bufsize) {
     int numbytes, resbytes = 0;
     char buf[bufsize];
     std::string request;
@@ -344,30 +357,64 @@ std::string Server::receiveMessage(ClientConnection& client, int bufsize) {
     return request;
 }
 
-bool Server::addSink(std::shared_ptr<logrr::ILogSink> sink) noexcept {
-    return logger_.addSink(sink);
-}
-
-bool Server::parseReq(ClientConnection& client, std::string& req) {
+Request Server::parseReq(ClientConnection& client, std::string& req) {
+    Request temp;
     int end_targets = req.find("\r\n");
     int end_headers = req.find("\r\n\r\n");
 
     if (end_targets == std::string::npos || end_headers == std::string::npos) {
         logger_.log(logrr::LogRecord{
-            .level = logrr::LogLevel::Warning,
-            .message = "Invalid request format",
-            .fields {
-                {"client_ip", client.ip},
-                {"client_port", client.port},
-                {"status_code", 400}
-            }
+        .level = logrr::LogLevel::Warning,
+        .message = "Invalid request format",
+        .fields {
+            {"client_ip", client.ip},
+            {"client_port", client.port},
+            {"status_code", logrr::StatusCode::BAD_REQUEST},
+            {"status_code_mess", codeToStr(logrr::StatusCode::BAD_REQUEST)}
+        }
         });
-        return false;
+        return temp;
     }
     std::string targets = req.substr(0, end_targets);
-    std::string headers = req.substr(end_targets,  end_headers);
-    std::string body = req.substr(end_headers);
-    return true;
+    std::string headers = req.substr(end_targets+2,  end_headers);
+    temp.body = req.substr(end_headers+4);
+
+    int first_space = targets.find(' ');
+    int second_space = targets.find(' ', first_space+1);
+    temp.method = targets.substr(0, first_space);
+    temp.path = targets.substr(first_space, second_space);
+    temp.version = targets.substr(second_space);
+
+    int beg = 0;
+    int end = headers.find("\r\n"), colon;
+    if (end == std::string::npos) return temp;
+    while(true) {
+        colon = headers.find(":", beg);
+        if (colon == std::string::npos || colon > end) {
+            beg = end + 2;
+            end = headers.find("\r\n", beg);
+            if (end == std::string::npos) break;
+            continue;
+        }
+
+        std::string key = headers.substr(beg, colon - beg);
+        std::string value = headers.substr(colon + 1, end - colon - 1);
+
+        size_t val_start = value.find_first_not_of(" \t");
+        if (val_start != std::string::npos) value = value.substr(val_start);
+
+        temp.headers[key] = value;
+
+        beg = end + 2;
+        end = headers.find("\r\n", beg);
+        if (end == std::string::npos) break;
+    }
+
+    return temp;
+}
+
+bool Server::addSink(std::shared_ptr<logrr::ILogSink> sink) noexcept {
+    return logger_.addSink(sink);
 }
 
 } // namespace http
