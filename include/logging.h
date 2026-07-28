@@ -6,6 +6,7 @@
 #include <vector>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <chrono>
 #include <sstream>
 #include <iostream>
@@ -13,11 +14,16 @@
 #include <fmt/format.h>
 #include <ctime>
 #include <iomanip>
+#include <type_traits>
 
 #include "concat.h"
+#include "client_structures.h"
+#include "log_status.h"
+
 
 namespace {
-    std::string timeToString(std::chrono::system_clock::time_point tp) {
+    std::string timeToString(std::chrono::system_clock::time_point tp) 
+    {
         std::time_t t = std::chrono::system_clock::to_time_t(tp);
         std::tm tm = *std::localtime(&t);
 
@@ -25,67 +31,74 @@ namespace {
         oss << std::put_time(&tm, "%F %T");
         return oss.str();
     }
+
+
+    template <typename, typename=void>
+    struct isConvertableToString : std::false_type {};
+    
+    template <typename T>
+    struct isConvertableToString<
+        T,
+        std::void_t<decltype(static_cast<std::string>(std::declval<T>()))>
+    > : std::true_type {};
+
+
+    template <typename, typename=void>
+    struct isStreamable : std::false_type {};
+
+    template <typename T> 
+    struct isStreamable<
+        T,
+        std::void_t<decltype(std::declval<std::ostringstream&>() << std::declval<T>())>
+    > : std::true_type {};
+    
+
+    template <typename T>
+    std::string convertToString(T&& value) 
+    {
+        using U = std::decay_t<T>;
+
+        if constexpr (isConvertableToString<U>::value) {
+            return static_cast<std::string>(std::forward<T>(value));
+        } 
+        else if constexpr (std::is_enum_v<U>) {
+            return std::to_string(static_cast<std::underlying_type_t<U>>(value));
+        }
+        else if constexpr (std::is_same_v<U, bool>) {
+            return value ? "true" : "false";
+        } 
+        else if constexpr (std::is_arithmetic_v<U>) {
+            return std::to_string(value);
+        } 
+        else if constexpr (isStreamable<U>::value) {
+            std::ostringstream oss;
+            oss << value;
+            return oss.str();
+        } 
+        else {
+            static_assert(!sizeof(T*), "Type has no known conversion to std::string");
+        }
+    }
 } // namespace
 
 
 namespace logrr {
 
-class LogLevel final {
-public:
-    LogLevel() : num_(LogLevel::Info.num()), name_(LogLevel::Info.name()) {}
-    constexpr LogLevel(int num, const char* name) : num_(num), name_(name) {}
-
-    const char* name() const { return name_; }
-    int num() const { return num_; }
-
-    static const LogLevel Critical;
-    static const LogLevel Error;
-    static const LogLevel Warning; 
-    static const LogLevel Info;
-    static const LogLevel Debug;
-    static const LogLevel Trace;
-
-private:
-    int num_;
-    const char* name_;
+struct LogField 
+{
+    std::string key;
+    std::string value;
 };
 
-inline constexpr LogLevel LogLevel::Critical{-2, "CRIT"};
-inline constexpr LogLevel LogLevel::Error{-1, "ERROR"};
-inline constexpr LogLevel LogLevel::Warning{0, "WARN"};
-inline constexpr LogLevel LogLevel::Info{1, "INFO"};
-inline constexpr LogLevel LogLevel::Debug{2, "DEBUG"};
-inline constexpr LogLevel LogLevel::Trace{3, "TRACE"};
-
-enum class StatusCode : uint16_t {
-    OK = 200,
-    ACCEPTED = 201,
-    BAD_REQUEST = 400,
-    UNAUTHORIZED = 401,
-    NOT_FOUND = 404,
-    INTERNAL_ERROR = 500,
-};
-
-constexpr const char* codeToStr(StatusCode code) {
-    switch (code) {
-        case StatusCode::OK:             return "OK";
-        case StatusCode::ACCEPTED:       return "Accepted";
-        case StatusCode::BAD_REQUEST:    return "Bad Request";
-        case StatusCode::NOT_FOUND:      return "Not Found";
-        case StatusCode::INTERNAL_ERROR: return "Internal HttpServer Error";
-        default:                         return "Unknown";
-    }
+template <typename T>
+LogField field(const std::string& key, T&& value) 
+{
+    return LogField{std::move(key), convertToString(std::forward<T>(value))};
 }
 
-using LogValue = std::variant<std::string, uint16_t, int64_t, double, bool, StatusCode>;
-
-struct LogField {
-    std::string key;
-    LogValue value;
-};
-
-struct LogRecord {
-    LogLevel level;
+struct LogRecord 
+{
+    log_status level;
     std::string_view message="";
     std::string_view file="";
     int line=0;
@@ -94,13 +107,15 @@ struct LogRecord {
     std::vector<LogField> fields = {};
 };
 
-struct ILogFormatter {
+struct ILogFormatter 
+{
     virtual ~ILogFormatter() = default;
     virtual std::string format(const LogRecord& record) const noexcept = 0;
 };
 
 
-class SingleLineFormatter : public ILogFormatter {
+class SingleLineFormatter : public ILogFormatter 
+{
 public:
     SingleLineFormatter() = default;
     virtual ~SingleLineFormatter() = default;
@@ -108,7 +123,8 @@ public:
 };
 
 
-struct JsonFormatter : public ILogFormatter {
+struct JsonFormatter : public ILogFormatter 
+{
 public:
     JsonFormatter() = default;
     virtual ~JsonFormatter() = default;
@@ -116,7 +132,8 @@ public:
 };
 
 
-struct ILogSink {
+struct ILogSink 
+{
     virtual ~ILogSink() = default;
     virtual bool log(const LogRecord& record) noexcept = 0;
     virtual bool flush() noexcept { return true; }
@@ -124,7 +141,8 @@ struct ILogSink {
 };
 
 
-class ConsoleSink final : public ILogSink {
+class ConsoleSink final : public ILogSink 
+{
 public:
     ConsoleSink() : formatter_(std::make_shared<SingleLineFormatter>()) {}
     ConsoleSink(std::shared_ptr<ILogFormatter> formatter) : formatter_(std::move(formatter)) {}
@@ -137,7 +155,8 @@ private:
 };
 
 
-class FileSink final : public ILogSink {
+class FileSink final : public ILogSink 
+{
 public:
     FileSink(std::string_view file_name, std::shared_ptr<ILogFormatter> formatter);
     FileSink(std::string_view file_name) : FileSink(file_name, std::make_shared<JsonFormatter>()) {}
@@ -151,7 +170,8 @@ private:
     std::shared_ptr<ILogFormatter> formatter_;
 };
 
-class Logger final {
+class Logger final 
+{
 public:
     Logger() = default;
     Logger(const Logger& logger) noexcept;
@@ -162,11 +182,11 @@ public:
 
     bool addSink(std::shared_ptr<ILogSink> sink) noexcept;
     bool log(const LogRecord& record) noexcept;
-    bool log(const LogLevel& level, std::string_view message) noexcept;
-    bool log(const LogLevel& level, std::string_view message, std::string_view file) noexcept;
-    bool log(const LogLevel& level, std::string_view message, 
+    bool log(const log_status& level, std::string_view message) noexcept;
+    bool log(const log_status& level, std::string_view message, std::string_view file) noexcept;
+    bool log(const log_status& level, std::string_view message, 
              std::string_view file, int line) noexcept;
-    bool log(const LogLevel& level, std::string_view message, 
+    bool log(const log_status& level, std::string_view message, 
              std::string_view file, int line, std::string_view func) noexcept;
     bool flush() noexcept;
 private:

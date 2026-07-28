@@ -1,6 +1,7 @@
 #ifndef HTTP_CONNECTION
 #define HTTP_CONNECTION
 
+#include <functional>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -18,7 +19,7 @@ public:
     bool sendResp();
 protected:
     std::string recvRawReq() noexcept;
-    Response makeResp();
+    Response makeResp() noexcept;
     void closeConnection(int& sockfd) noexcept;
 private:
     ClientConnection client_; 

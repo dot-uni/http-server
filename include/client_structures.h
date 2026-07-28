@@ -1,7 +1,12 @@
 #ifndef CLIENT_STRUCTURES
 #define CLIENT_STRUCTURES
 
+#include <random>
+#include <sstream>
+#include <iomanip>
 #include <map>
+
+#include "status.h"
 
 #define DEF_HTTP_PORT "8080"
 #define DEF_MAX_CONNECTIONS 20
@@ -9,10 +14,13 @@
 
 namespace http {
 
+std::string generate_uuid_v4();
+
 constexpr int kInvalidSocket = -1;
 constexpr int kEmptyDescriptor = 0;
 
-struct Request {
+struct Request 
+{
     std::string method="";
     std::string path="";
     std::string version="";
@@ -20,14 +28,17 @@ struct Request {
     std::string body="";
 };
 
-struct Response {
+struct Response 
+{
     std::string version="";
-    logrr::StatusCode status;
+    status status;
     std::map<std::string, std::string> headers;
     std::string body="";
 };
 
-struct ClientConnection {
+struct ClientConnection 
+{
+    std::string id;
     int sockfd = kInvalidSocket;
     std::string ip = "";
     uint16_t port = 0;

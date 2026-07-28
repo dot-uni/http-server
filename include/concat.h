@@ -16,6 +16,7 @@ struct isStreamableImpl<
 template <typename T>
 inline constexpr bool isStreamable = isStreamableImpl<T>::value;
 
+
 template <typename... Args>
 std::string concat(Args&&... args) {
     static_assert((isStreamable<Args> && ...), 

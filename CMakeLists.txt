@@ -7,5 +7,17 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(fmt CONFIG REQUIRED)
 
-add_executable(server server.cc logging.cc http_server.cc http_connection.cc)
+set(SOURCES
+    server.cc
+    logging.cc
+    http_server.cc
+    http_connection.cc
+    client_structures.cc
+    status.cc
+    log_status.cc
+)
+list(TRANSFORM SOURCES PREPEND impl/)
+
+add_executable(server ${SOURCES})
+target_include_directories(server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(server PRIVATE fmt::fmt)

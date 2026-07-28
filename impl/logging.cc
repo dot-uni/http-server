@@ -1,31 +1,14 @@
 #include "logging.h"
 
-template <typename... Ts>
-struct fmt::formatter<std::variant<Ts...>> {
-    constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
-
-    auto format(const std::variant<Ts...>& v, format_context& ctx) const {
-        return std::visit([&](const auto& val) {
-            return fmt::format_to(ctx.out(), "{}", val);
-        }, v);
-    }
-};
-
-template <>
-struct fmt::formatter<logrr::StatusCode> : fmt::formatter<uint16_t> {
-    auto format(logrr::StatusCode code, format_context& ctx) const {
-        return fmt::formatter<uint16_t>::format(
-            static_cast<uint16_t>(code), ctx);
-    }
-};
 
 namespace logrr {
 
-std::string SingleLineFormatter::format(const LogRecord& r) const noexcept {
+std::string SingleLineFormatter::format(const LogRecord& r) const noexcept 
+{
     std::string base = "";
     try {
         base = fmt::format("{} [{}] – {}", 
-            r.timepoint, r.level.name(), r.message);
+            r.timepoint, logrr::obsolete_reason(r.level), r.message);
         if (!r.file.empty()) {
             base += fmt::format(R"(, "file": "{}")", r.file);
         }
@@ -39,17 +22,19 @@ std::string SingleLineFormatter::format(const LogRecord& r) const noexcept {
             base += fmt::format(R"(, "{}": {})", field.key, field.value);
         }
     }
-    catch(fmt::format_error& mess) {
+    catch(fmt::format_error& mess) 
+    {
         std::cerr << __FILE__ << ":" << __LINE__ << " " << mess.what() << '\n';
     }
     return base;
 }
 
-std::string JsonFormatter::format(const LogRecord& r) const noexcept {
+std::string JsonFormatter::format(const LogRecord& r) const noexcept 
+{
     std::string base = "";
     try {
         base = fmt::format(R"({{"timepoint":"{}","level":"{}","message":"{}","file":"{}","line":"{}","func":"{}")", 
-            r.timepoint, r.level.name(), r.message, r.file, r.line, r.func);
+            r.timepoint, logrr::obsolete_reason(r.level), r.message, r.file, r.line, r.func);
         if (!r.fields.empty()) {
             base += R"("fields":{)";
 
@@ -65,17 +50,19 @@ std::string JsonFormatter::format(const LogRecord& r) const noexcept {
     return base;
 }
 
-bool ConsoleSink::log(const LogRecord& record) noexcept {
+bool ConsoleSink::log(const LogRecord& record) noexcept 
+{
     std::string inf;
     inf = formatter_->format(record);
 
-    std::ostream& out = (record.level.num() <= LogLevel::Error.num()) ? std::cerr : std::cout;
+    std::ostream& out = (record.level <= log_status::error) ? std::cerr : std::cout;
     out << inf << '\n';
 
     return static_cast<bool>(out);
 }
 
-FileSink::FileSink(std::string_view file_name, std::shared_ptr<ILogFormatter> formatter) {
+FileSink::FileSink(std::string_view file_name, std::shared_ptr<ILogFormatter> formatter) 
+{
     file_.open(file_name, std::ios::app);
     if (!file_.is_open()) {
         throw std::runtime_error(fmt::format("{}:{} Failed to open file '{}': {}", 
@@ -84,7 +71,8 @@ FileSink::FileSink(std::string_view file_name, std::shared_ptr<ILogFormatter> fo
     formatter_ = std::move(formatter);
 }
 
-bool FileSink::log(const LogRecord& record) noexcept {
+bool FileSink::log(const LogRecord& record) noexcept 
+{
     std::string inf;
     inf = formatter_->format(record);
 
@@ -95,13 +83,14 @@ bool FileSink::log(const LogRecord& record) noexcept {
         return false;
     }
 
-    if (record.level.num() <= LogLevel::Error.num()) {
+    if (record.level <= log_status::error) {
         return flush();
     }
     return true;
 }
 
-bool FileSink::flush() noexcept {
+bool FileSink::flush() noexcept 
+{
     file_.flush();
     if (file_.fail()) {
         std::cerr << __FILE__ << ":" << __LINE__ << " " << "Failed to flush file: " << std::strerror(errno) << '\n';
@@ -111,26 +100,31 @@ bool FileSink::flush() noexcept {
     return true;
 }
 
-Logger::Logger(const Logger& logger) noexcept {
+Logger::Logger(const Logger& logger) noexcept 
+{
     sinks_ = logger.sinks_;
 }
 
-Logger::Logger(Logger&& logger) noexcept {
+Logger::Logger(Logger&& logger) noexcept 
+{
     sinks_ = std::move(logger.sinks_);
 }
 
-Logger& Logger::operator=(const Logger& logger) noexcept {
+Logger& Logger::operator=(const Logger& logger) noexcept 
+{
     if (&logger == this) return *this;
     sinks_ = logger.sinks_;
     return *this;
 }
 
-Logger& Logger::operator=(Logger&& logger) noexcept {
+Logger& Logger::operator=(Logger&& logger) noexcept 
+{
     sinks_ = std::move(logger.sinks_);
     return *this;
 }
 
-bool Logger::addSink(std::shared_ptr<ILogSink> sink) noexcept {
+bool Logger::addSink(std::shared_ptr<ILogSink> sink) noexcept 
+{
     const char* sink_name = sink->name();
     for (auto&& existing : sinks_) {
         if (sink_name == existing->name()) {
@@ -147,7 +141,8 @@ bool Logger::addSink(std::shared_ptr<ILogSink> sink) noexcept {
     return true;
 }
 
-bool Logger::log(const LogRecord& record) noexcept {
+bool Logger::log(const LogRecord& record) noexcept 
+{
     if (sinks_.empty()) {
         std::cerr << __FILE__ << ":" << __LINE__ << " " << "Sinks not added" << '\n';
         return false;
@@ -164,25 +159,30 @@ bool Logger::log(const LogRecord& record) noexcept {
     return success;
 }
 
-bool Logger::log(const LogLevel& level, std::string_view message) noexcept {
+bool Logger::log(const log_status& level, std::string_view message) noexcept 
+{
     return log(LogRecord{level, message});
 }
 
-bool Logger::log(const LogLevel& level, std::string_view message, std::string_view file) noexcept {
+bool Logger::log(const log_status& level, std::string_view message, std::string_view file) noexcept 
+{
     return log(LogRecord{level, message, file});
 }
 
-bool Logger::log(const LogLevel& level, std::string_view message, 
-         std::string_view file, int line) noexcept {
+bool Logger::log(const log_status& level, std::string_view message, 
+         std::string_view file, int line) noexcept 
+{
     return log(LogRecord{level, message, file, line});
 }
 
-bool Logger::log(const LogLevel& level, std::string_view message, 
-         std::string_view file, int line, std::string_view func) noexcept {
+bool Logger::log(const log_status& level, std::string_view message, 
+         std::string_view file, int line, std::string_view func) noexcept 
+{
     return log(LogRecord{level, message, file, line, func});
 }
 
-bool Logger::flush() noexcept {
+bool Logger::flush() noexcept 
+{
     if (sinks_.empty()) {
         std::cerr << __FILE__ << ":" << __LINE__ << " " << "Sinks not added" << '\n';
         return false;
