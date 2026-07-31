@@ -40,10 +40,14 @@ namespace {
 
 namespace http {
 
+    
 HttpServer::HttpServer() 
 {    
-    logger_.addSink(std::make_shared<logrr::ConsoleSink>());
-    logger_.log(logrr::log_status::info, "The HttpServer constructor was called: HttpServer object created");
+    logger_ = std::make_shared<logrr::Logger>();
+    logger_->addSink(std::make_shared<logrr::ConsoleSink>());
+    logger_->lexeced(__PRETTY_FUNCTION__, {
+        "message", "The HttpServer constructor was called: HttpServer object created"
+    });
 
     memset(&hints_, 0, sizeof(hints_));
     hints_.ai_family = AF_UNSPEC;
@@ -56,10 +60,12 @@ HttpServer::~HttpServer()
 {
     freeAddrInfo(servinfo_);
     closeConnection(sockfd_);
-    logger_.log(logrr::log_status::info, "The HttpServer destructor was called: HttpServer has shut down");
+    logger_->lexeced(__PRETTY_FUNCTION__, {
+        "message", "The HttpServer destructor was called: HttpServer has shut down"
+    });
 }
 
-void HttpServer::moveImpl(HttpServer& serv) noexcept 
+void HttpServer::moveImpl(HttpServer&& serv) noexcept 
 {
     sockfd_ = std::move(serv.sockfd_);
     servinfo_ = std::move(serv.servinfo_);
@@ -70,7 +76,7 @@ void HttpServer::moveImpl(HttpServer& serv) noexcept
 
 HttpServer::HttpServer(HttpServer&& serv) noexcept 
 {
-    moveImpl(serv);
+    moveImpl(std::forward<HttpServer>(serv));
 }
 
 HttpServer& HttpServer::operator=(HttpServer&& serv) noexcept 
@@ -78,13 +84,13 @@ HttpServer& HttpServer::operator=(HttpServer&& serv) noexcept
     if (&serv == this) return *this;
     freeAddrInfo(servinfo_);
     closeConnection(sockfd_);
-    moveImpl(serv);
+    moveImpl(std::forward<HttpServer>(serv));
     return *this;
 }
 
 bool HttpServer::listen(const char* host, const char* port, int max_connections, int bufsize) 
 {
-    logger_.log(logrr::log_status::info, concat("The listen method was called, host=", host));
+    logger_->lcalled(__PRETTY_FUNCTION__, {logrr::field("host", host)});
     return buildSocket(host, port) && listenInternal(max_connections, bufsize);
 }
 
@@ -95,14 +101,9 @@ bool HttpServer::buildSocket(const char* host, const char* port) noexcept
 
     success = getaddrinfo(host, port, &hints_, &servinfo);
     if (success != 0) {
-        logger_.log(logrr::LogRecord{
-            .level = logrr::log_status::error,
-            .message = "getaddrinfo() failed",
-            .file = __FILE__,
-            .line = __LINE__,
-            .fields {
-                logrr::field("gai_strerror", gai_strerror(success))
-            }
+        logger_->lfailed(__PRETTY_FUNCTION__, __LINE__, {
+            logrr::field("message", "Error from ::getaddrinfo()"),
+            logrr::field("gai_strerror", gai_strerror(success))
         });
         return false;
     }
@@ -111,15 +112,10 @@ bool HttpServer::buildSocket(const char* host, const char* port) noexcept
         next = p->ai_next;
         sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
         if (sockfd == kInvalidSocket) {
-            logger_.log(logrr::LogRecord{
-                .level = logrr::log_status::error,
-                .message = "socket() failed",
-                .file = __FILE__,
-                .line = __LINE__,
-                .fields {
-                    logrr::field("errno", errno),
-                    logrr::field("errno_str", strerror(errno))
-                }
+            logger_->lfailed(__PRETTY_FUNCTION__, __LINE__, {
+                logrr::field("message", "Error from ::socket()"),
+                logrr::field("errno", errno),
+                logrr::field("strerror", strerror(errno))
             });
             freeaddrinfo(p);
             p = next;
@@ -128,15 +124,10 @@ bool HttpServer::buildSocket(const char* host, const char* port) noexcept
 
         success = setSockOptions(sockfd, SO_REUSEADDR, SO_REUSEPORT);
         if (success == -1) {
-            logger_.log(logrr::LogRecord{
-                .level = logrr::log_status::error,
-                .message = "setSockOptions() failed",
-                .file = __FILE__,
-                .line = __LINE__,
-                .fields {
-                    logrr::field("errno", errno),
-                    logrr::field("errno_str", strerror(errno))
-                }
+            logger_->lfailed(__PRETTY_FUNCTION__, __LINE__, {
+                logrr::field("message", "Error from http::HttpServer::setSockOptions()"),
+                logrr::field("errno", errno),
+                logrr::field("strerror", strerror(errno))
             });
             freeaddrinfo(p);
             closeConnection(sockfd);
@@ -145,15 +136,10 @@ bool HttpServer::buildSocket(const char* host, const char* port) noexcept
 
         success = bind(sockfd, p->ai_addr, p->ai_addrlen);
         if (success == -1) {
-            logger_.log(logrr::LogRecord{
-                .level = logrr::log_status::error,
-                .message = "bind() failed",
-                .file = __FILE__,
-                .line = __LINE__,
-                .fields {
-                    logrr::field("errno", errno),
-                    logrr::field("errno_str", strerror(errno))
-                }
+            logger_->lfailed(__PRETTY_FUNCTION__, __LINE__, {
+                logrr::field("message", "Error from ::bind()"),
+                logrr::field("errno", errno),
+                logrr::field("strerror", strerror(errno))
             });
             freeaddrinfo(p);
             closeConnection(sockfd);
@@ -164,14 +150,18 @@ bool HttpServer::buildSocket(const char* host, const char* port) noexcept
     }
 
     if (!p) {
-        logger_.log(logrr::log_status::error, "HttpServer failed to bind", __FILE__, __LINE__);
+        logger_->lfailed(__PRETTY_FUNCTION__, __LINE__, {
+            "message", "HttpServer failed to bind"
+        });
         return false;
     }
 
     closeConnection(sockfd_);
     servinfo_ = std::move(p);
     sockfd_ = std::move(sockfd);
-    logger_.log(logrr::log_status::info, "New socket successfully created");
+    logger_->linfo(__PRETTY_FUNCTION__, {
+        "message", "New socket successfully created"
+    });
     return true;
 }
 
@@ -203,15 +193,10 @@ template <typename Opt> bool HttpServer::applyOption(int sockfd, Opt&& arg, int 
     int success;
     success = setsockopt(sockfd, SOL_SOCKET, arg, &opt, sizeof(opt));
     if (success == -1) {
-        logger_.log(logrr::LogRecord{
-            .level = logrr::log_status::error,
-            .message = "setsockopt() failed",
-            .file = __FILE__,
-            .line = __LINE__,
-            .fields {
-                logrr::field("errno", errno),
-                logrr::field("errno_str", strerror(errno))
-            }
+        logger_->lfailed(__PRETTY_FUNCTION__, __LINE__, {
+            logrr::field("message", "Error from ::setsockopt()"),
+            logrr::field("errno", errno),
+            logrr::field("strerror", strerror(errno))
         });
         return false;
     }
@@ -223,50 +208,48 @@ bool HttpServer::listenInternal(int max_connections, int bufsize)
     int success;
 
     if (max_connections <= 0) {
-        logger_.log(logrr::log_status::error, "The number of connections must be greater than 0", __FILE__, __LINE__);
+        logger_->lerror(__PRETTY_FUNCTION__, __LINE__, {
+            logrr:field("message", "The number of connections must be greater than 0")
+        });
         return false;
     }
 
     if (bufsize <= 0) {
-        logger_.log(logrr::log_status::error, "The buffer size must be strictly greater than 0", __FILE__, __LINE__);
+        logger_->lerror(__PRETTY_FUNCTION__, __LINE__, {
+            logrr:field("message", "The buffer size must be strictly greater than 0")
+        });
         return false;
     }
 
     success = ::listen(sockfd_, max_connections);
     if (success == -1) {
-        logger_.log(logrr::LogRecord{
-            .level = logrr::log_status::error,
-            .message = "listen() failed",
-            .file = __FILE__,
-            .line = __LINE__,
-            .fields {
-                logrr::field("errno", errno),
-                logrr::field("errno_str", strerror(errno))
-            }
+        logger_->lfailed(__PRETTY_FUNCTION__, __LINE__, {
+            logrr::field("message", "Error from ::listen()"),
+            logrr::field("errno", errno),
+            logrr::field("strerror", strerror(errno))
         });
         return false;
     }
 
-    logger_.log(logrr::log_status::info, "HttpServer waiting for connections...");
+    logger_->linfo(__PRETTY_FUNCTION__, {
+        logrr:field("message", "HttpServer waiting for connections...")
+    });
 
-    std::string raw_req;
+
     ClientConnection client;
-    Request req;
-    Response resp;
     while(true) {
         client = acceptConnection();
         if (client.sockfd == kInvalidSocket) continue;
-        logger_.log(logrr::LogRecord{
-            .level = logrr::log_status::info,
-            .message = "Client connected",
-            .fields {
-                logrr::field("client_ip", client.ip),
-                logrr::field("client_port", client.port)
-            }
+
+        logger_->linfo(__PRETTY_FUNCTION__, {
+            logrr::field("message", "Client connected"),
+            logrr::field("client_id", client.id),
+            logrr::field("client_ip", client.ip),
+            logrr::field("client_port", client.port)
         });
         
-        HttpConnection connection(client, bufsize);
-        if (!connection.recvReq()) {
+        HttpConnection connection(client, logger_, bufsize);
+        if (!connection.process()) {
             continue;
         }
         break;
@@ -286,16 +269,11 @@ ClientConnection HttpServer::acceptConnection()
     cli_sock = accept(sockfd_, (sockaddr*)&cli_addr, &cli_size);
 
     if (cli_sock == kInvalidSocket) {
-        logger_.log(logrr::LogRecord{
-            .level = logrr::log_status::error,
-            .message = "accept() failed",
-            .file = __FILE__,
-            .line = __LINE__,
-            .fields {
-                logrr::field("errno", errno),
-                logrr::field("errno_str", strerror(errno))
-            }
-        }); 
+        logger_->lfailed(__PRETTY_FUNCTION__, __LINE__, {
+            logrr::field("message", "Error from ::accept()"),
+            logrr::field("errno", errno),
+            logrr::field("strerror", strerror(errno))
+        });
         return ClientConnection();
     }
       
@@ -307,7 +285,10 @@ ClientConnection HttpServer::acceptConnection()
 
 bool HttpServer::addSink(std::shared_ptr<logrr::ILogSink> sink) noexcept 
 {
-    return logger_.addSink(sink);
+    return logger_->addSink(sink);
+    logger_->linfo(__PRETTY_FUNCTION__, {
+        logrr::field("message", "A logging device was added")
+    });
 }
 
 } // namespace http

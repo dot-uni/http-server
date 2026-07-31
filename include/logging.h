@@ -2,7 +2,6 @@
 #define LOGGING_H
 
 
-#include <variant>
 #include <vector>
 #include <mutex>
 #include <string>
@@ -16,79 +15,85 @@
 #include <iomanip>
 #include <type_traits>
 
-#include "concat.h"
-#include "client_structures.h"
+#include "json_formatter.h"
 #include "log_status.h"
 
 
 namespace {
-    std::string timeToString(std::chrono::system_clock::time_point tp) 
-    {
-        std::time_t t = std::chrono::system_clock::to_time_t(tp);
-        std::tm tm = *std::localtime(&t);
 
+
+std::string timeToString(std::chrono::system_clock::time_point tp) 
+{
+    std::time_t t = std::chrono::system_clock::to_time_t(tp);
+    std::tm tm = *std::localtime(&t);
+
+    std::ostringstream oss;
+    oss << std::put_time(&tm, "%F %T");
+    return oss.str();
+}
+
+
+template <typename, typename=void>
+struct is_formattable_to_string : std::false_type {};
+
+template <typename T>
+struct is_formattable_to_string<
+    T,
+    std::void_t<decltype(static_cast<std::string>(std::declval<T>()))>
+> : std::true_type {};
+
+template <typename T>
+constexpr bool is_formattable_to_string_v = is_formattable_to_string<T>::value;
+
+
+template <typename, typename=void>
+struct is_streamable : std::false_type {};
+
+template <typename T> 
+struct is_streamable<
+    T,
+    std::void_t<decltype(std::declval<std::ostringstream&>() << std::declval<T>())>
+> : std::true_type {};
+
+template <typename T>
+constexpr bool is_streamable_v = is_streamable<T>::value;
+
+
+template <typename T>
+std::string convertToString(T&& value) {
+    using U = std::decay_t<T>;
+
+    if constexpr (is_formattable_to_string_v<U>) {
+        return static_cast<std::string>(std::forward<T>(value));
+    } 
+    else if constexpr (std::is_enum_v<U>) {
+        return std::to_string(static_cast<std::underlying_type_t<U>>(value));
+    }
+    else if constexpr (std::is_same<U, bool>::value) {
+        return value ? "true" : "false";
+    } 
+    else if constexpr (std::is_arithmetic<U>::value) {
+        return std::to_string(value);
+    } 
+    else if constexpr (is_streamable_v<U>) {
         std::ostringstream oss;
-        oss << std::put_time(&tm, "%F %T");
+        oss << value;
         return oss.str();
+    } 
+    else {
+        static_assert(!sizeof(T*), "Type has no known conversion to std::string");
     }
+}
 
 
-    template <typename, typename=void>
-    struct isConvertableToString : std::false_type {};
-    
-    template <typename T>
-    struct isConvertableToString<
-        T,
-        std::void_t<decltype(static_cast<std::string>(std::declval<T>()))>
-    > : std::true_type {};
-
-
-    template <typename, typename=void>
-    struct isStreamable : std::false_type {};
-
-    template <typename T> 
-    struct isStreamable<
-        T,
-        std::void_t<decltype(std::declval<std::ostringstream&>() << std::declval<T>())>
-    > : std::true_type {};
-    
-
-    template <typename T>
-    std::string convertToString(T&& value) 
-    {
-        using U = std::decay_t<T>;
-
-        if constexpr (isConvertableToString<U>::value) {
-            return static_cast<std::string>(std::forward<T>(value));
-        } 
-        else if constexpr (std::is_enum_v<U>) {
-            return std::to_string(static_cast<std::underlying_type_t<U>>(value));
-        }
-        else if constexpr (std::is_same_v<U, bool>) {
-            return value ? "true" : "false";
-        } 
-        else if constexpr (std::is_arithmetic_v<U>) {
-            return std::to_string(value);
-        } 
-        else if constexpr (isStreamable<U>::value) {
-            std::ostringstream oss;
-            oss << value;
-            return oss.str();
-        } 
-        else {
-            static_assert(!sizeof(T*), "Type has no known conversion to std::string");
-        }
-    }
 } // namespace
 
 
 namespace logrr {
 
-struct LogField 
-{
-    std::string key;
-    std::string value;
-};
+    
+using LogField = std::pair<std::string, std::string>;
+
 
 template <typename T>
 LogField field(const std::string& key, T&& value) 
@@ -96,21 +101,22 @@ LogField field(const std::string& key, T&& value)
     return LogField{std::move(key), convertToString(std::forward<T>(value))};
 }
 
+
 struct LogRecord 
 {
-    log_status level;
+    log_status status;
     std::string_view message="";
     std::string_view file="";
     int line=0;
-    std::string_view func="";
     std::string timepoint = timeToString(std::chrono::system_clock::now());
-    std::vector<LogField> fields = {};
+    std::vector<LogField> details = {};
 };
+
 
 struct ILogFormatter 
 {
     virtual ~ILogFormatter() = default;
-    virtual std::string format(const LogRecord& record) const noexcept = 0;
+    virtual std::string format(const LogRecord&) const noexcept = 0;
 };
 
 
@@ -144,8 +150,8 @@ struct ILogSink
 class ConsoleSink final : public ILogSink 
 {
 public:
-    ConsoleSink() : formatter_(std::make_shared<SingleLineFormatter>()) {}
-    ConsoleSink(std::shared_ptr<ILogFormatter> formatter) : formatter_(std::move(formatter)) {}
+    ConsoleSink();
+    ConsoleSink(std::shared_ptr<ILogFormatter> formatter);
     ~ConsoleSink() = default;
     bool log(const LogRecord& record) noexcept override;
     const char* name() const noexcept override { return "ConsoleSink"; }
@@ -158,8 +164,9 @@ private:
 class FileSink final : public ILogSink 
 {
 public:
-    FileSink(std::string_view file_name, std::shared_ptr<ILogFormatter> formatter);
-    FileSink(std::string_view file_name) : FileSink(file_name, std::make_shared<JsonFormatter>()) {}
+    FileSink();
+    FileSink(const std::string& file_name);
+    FileSink(const std::string& file_name, std::shared_ptr<ILogFormatter> formatter);
     ~FileSink() { file_.close(); }
     bool log(const LogRecord& record) noexcept override;
     bool flush() noexcept override;
@@ -169,6 +176,7 @@ private:
     std::ofstream file_;
     std::shared_ptr<ILogFormatter> formatter_;
 };
+
 
 class Logger final 
 {
@@ -182,13 +190,46 @@ public:
 
     bool addSink(std::shared_ptr<ILogSink> sink) noexcept;
     bool log(const LogRecord& record) noexcept;
-    bool log(const log_status& level, std::string_view message) noexcept;
-    bool log(const log_status& level, std::string_view message, std::string_view file) noexcept;
-    bool log(const log_status& level, std::string_view message, 
-             std::string_view file, int line) noexcept;
-    bool log(const log_status& level, std::string_view message, 
-             std::string_view file, int line, std::string_view func) noexcept;
+
+    inline bool linfo(const std::string& where, std::vector<LogField>&& dtls) noexcept;
+    inline bool lcalled(const std::string& where, std::vector<LogField>&& dtls) noexcept;
+    inline bool lexeced(const std::string& where, std::vector<LogField>&& dtls) noexcept;
+
+    inline bool lfailed(const std::string& where, std::vector<LogField>&& dtls) noexcept;
+    inline bool lfailed(const std::string& where, int line, std::vector<LogField>&& dtls) noexcept;
+    inline bool lfailed(const std::string& where, const std::string& file, std::vector<LogField>&& dtls) noexcept;
+    inline bool lfailed(const std::string& where, const std::string& file, int line, std::vector<LogField>&& dtls) noexcept;
+
+    inline bool lerror(const std::string& where, std::vector<LogField>&& dtls) noexcept;
+    inline bool lerror(const std::string& where, int line, std::vector<LogField>&& dtls) noexcept;
+    inline bool lerror(const std::string& where, const std::string& file, std::vector<LogField>&& dtls) noexcept;
+    inline bool lerror(const std::string& where, const std::string& file, int line, std::vector<LogField>&& dtls) noexcept;
+
+    inline bool lwarning(const std::string& where, std::vector<LogField>&& dtls) noexcept;
+    inline bool lwarning(const std::string& where, int line, std::vector<LogField>&& dtls) noexcept;
+    inline bool lwarning(const std::string& where, const std::string& file, std::vector<LogField>&& dtls) noexcept;
+    inline bool lwarning(const std::string& where, const std::string& file, int line, std::vector<LogField>&& dtls) noexcept;
+
+    inline bool lcritical(const std::string& where, const std::string& file, int line, std::vector<LogField>&& dtls) noexcept;
+    inline bool ldebug(const std::string& where, const std::string& file, int line, std::vector<LogField>&& dtls) noexcept;
+    inline bool ltrace(const std::string& where, const std::string& file, int line, std::vector<LogField>&& dtls) noexcept;
     bool flush() noexcept;
+protected:
+    inline bool simple_templ(
+        log_status status,
+        const std::string& where, 
+        std::vector<LogField>&& dtls, 
+        const std::string& sentence_prefix=""
+    ) noexcept;
+
+    inline bool detailed_templ(
+        log_status status,
+        const std::string& where, 
+        std::vector<LogField>&& dtls, 
+        const std::string& sentence_prefix="",
+        const std::string& file="", 
+        int line=0
+    ) noexcept;
 private:
     std::mutex mtx_;
     std::vector<std::shared_ptr<ILogSink>> sinks_;

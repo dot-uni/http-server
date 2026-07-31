@@ -7,6 +7,26 @@
 
 namespace {
 
+
+template <typename, typename=void>
+struct is_range : std::false_type {};
+
+template <typename T>
+struct is_range<
+    T,
+    std::void_t<
+        decltype(std::begin(std::declval<T&>())),
+        decltype(std::end(std::declval<T&>()))
+    >
+> : std::true_type {};
+
+template <typename T>
+constexpr bool is_range_v = 
+    is_range<T>::value &&
+    !std::is_same_v<std::decay_t<T>, std::string> &&
+    !std::is_convertible_v<std::decay_t<T>, const char*>;
+
+
 template <typename T>
 struct is_str : std::is_same<std::string, typename std::decay<T>::type> {};
 
@@ -52,29 +72,17 @@ auto is_valid_str = [](auto arg) -> bool {
     return false;
 };
 
+
 } // namespace
 
 
 namespace json {
 
+
 struct none {};
 
-template <typename Func>
-struct repeat_t 
-{
-    Func foo;
-    template <typename... Args>
-    decltype(auto) operator()(Args&&... args) const {
-        return foo(*this, std::forward<Args>(args)...);
-    }
-};
 
-template <typename Func> 
-repeat_t<std::decay_t<Func>> repeat(Func&& foo) {
-    return { std::forward<Func>(foo) };
-}
-
-auto check_type = [](auto arg) -> std::string {
+auto check_type = [](const auto& arg) -> std::string {
     using type = std::decay_t<decltype(arg)>;
     if (is_valid_str(arg)) {
         return fmt::format(R"({})", arg);
@@ -85,7 +93,8 @@ auto check_type = [](auto arg) -> std::string {
     return fmt::format(R"({})", arg);
 };
 
-auto field = [](auto fst, auto sec) -> std::string {
+
+auto field = [](const auto& fst, const auto& sec) -> std::string {
     using type = std::decay_t<decltype(sec)>;
     if (is_valid_str(sec)) {
         return fmt::format(R"("{}":{})", fst, sec);
@@ -96,32 +105,60 @@ auto field = [](auto fst, auto sec) -> std::string {
     else if constexpr (std::is_same<type, none>::value) {
         return fmt::format(R"("{}":none)", fst);
     }
-    // bool, int, double, float
     return fmt::format(R"("{}":{})", fst, sec);
 };
 
-auto var = [](auto arg) -> std::string { 
-    return check_type(arg);
-};
 
-auto obj = repeat([](auto&& self, auto... args) -> std::string
-{
+template <typename... Args>
+std::string obj(Args&&... args) {
     std::string res = "{";
     if constexpr (sizeof...(args) == 0) return "{}";
-    ((res += check_type(args) + ","), ...);
+    else if constexpr (sizeof...(args) == 1) {
+        using Arg0 = std::tuple_element_t<0, std::tuple<std::decay_t<Args>...>>;
+
+        if constexpr (is_range_v<Arg0>) {
+            auto&& single = std::get<0>(std::forward_as_tuple(args...));
+            if (single.empty()) return "{}";
+            for (auto&& [key, value] : single) {
+                res += field(key, value) + ",";
+            }
+        }
+        else {
+            ((res += check_type(args) + ","), ...);
+        }
+    }
+    else {
+        ((res += check_type(args) + ","), ...);
+    }
     res.back() = '}';
     return res;
-});
+}
 
-auto arr = repeat([](auto&& self, auto... args) -> std::string
-{
+
+template <typename... Args>
+std::string arr(Args&&... args) {
     std::string res = "[";
     if constexpr (sizeof...(args) == 0) return "[]";
-    ((res += check_type(args) + ","), ...);
+    else if constexpr (sizeof...(args) == 1) {
+        using Arg0 = std::tuple_element_t<0, std::tuple<std::decay_t<Args>...>>;
+
+        if constexpr (is_range_v<Arg0>) {
+            auto&& single = std::get<0>(std::forward_as_tuple(args...));
+            if (single.empty()) return "[]";
+            for (auto&& [key, value] : single) {
+                res += field(key, value) + ",";
+            }
+        }
+        else {
+            ((res += check_type(args) + ","), ...);
+        }
+    }
+    else {
+        ((res += check_type(args) + ","), ...);
+    }
     res.back() = ']';
     return res;
-});
-
+}
 
 } // namespace json  
 
