@@ -36,19 +36,16 @@ std::string SingleLineFormatter::format(const LogRecord& r) const noexcept
 
 std::string JsonFormatter::format(const LogRecord& r) const noexcept 
 {
-    return json::obj(
-        json::field("timepoint", r.timepoint),
-        json::field("status_code", static_cast<int>(r.status)),
-        json::field("status", logrr::obsolete_reason(r.status)),
-        json::field("message", r.message),
-        json::field("file", r.file),
-        json::field("line", r.line),
-        json::field("details", 
-            json::arr(
-                r.details
-            )        
-        )
-    );
+    nlohmann::json j = {
+        {"timepoint", r.timepoint},
+        {"status_code", r.status},
+        {"status", logrr::obsolete_reason(r.status)},
+        {"message", r.message},
+        {"file", r.file},
+        {"line", r.line},
+        {"details", r.details}
+    };
+    return j.dump();
 }
 
 
@@ -66,7 +63,7 @@ bool ConsoleSink::log(const LogRecord& record) noexcept
     std::string inf;
     inf = formatter_->format(record);
 
-    std::ostream& out = (record.status <= log_status::error) ? std::cerr : std::cout;
+    std::ostream& out = (record.importance) ? std::cerr : std::cout;
     out << inf << '\n';
 
     return static_cast<bool>(out);
@@ -104,7 +101,7 @@ bool FileSink::log(const LogRecord& record) noexcept
         return false;
     }
 
-    if (record.status <= log_status::error) {
+    if (record.importance) {
         return flush();
     }
     return true;
@@ -148,8 +145,11 @@ Logger& Logger::operator=(Logger&& logger) noexcept
     return *this;
 }
 
+
 bool Logger::addSink(std::shared_ptr<ILogSink> sink) noexcept 
 {
+    if (!sink) return false;
+    
     const char* sink_name = sink->name();
     for (auto&& existing : sinks_) {
         if (sink_name == existing->name()) {
@@ -183,138 +183,6 @@ bool Logger::log(const LogRecord& record) noexcept
 
     return success;
 }
-
-
-inline bool Logger::simple_templ(
-    log_status status,
-    const std::string& where, 
-    std::vector<LogField>&& dtls, 
-    const std::string& sentence_prefix
-) noexcept 
-{
-    return log(LogRecord{
-        .status = status,
-        .message = where + sentence_prefix,
-        .details = std::forward<std::vector<LogField>>(dtls)
-    });
-}
-
-
-inline bool Logger::detailed_templ(
-    log_status status,
-    const std::string& where, 
-    std::vector<LogField>&& dtls, 
-    const std::string& sentence_prefix,
-    const std::string& file, 
-    int line
-) noexcept 
-{
-    return log(LogRecord{
-        .status = status,
-        .message = where + sentence_prefix,
-        .file = file,
-        .line = line,
-        .details = std::forward<std::vector<LogField>>(dtls)
-    });
-}
-
-
-inline bool Logger::linfo(const std::string& where, std::vector<LogField>&& dtls) noexcept 
-{
-    return simple_templ(logrr::log_status::info, where , std::forward<std::vector<LogField>>(dtls));
-}
-
-inline bool Logger::lcalled(const std::string& where, std::vector<LogField>&& dtls) noexcept 
-{
-    return simple_templ(logrr::log_status::info, where, std::forward<std::vector<LogField>>(dtls), " was called");
-}
-
-inline bool Logger::lexeced(const std::string& where, std::vector<LogField>&& dtls) noexcept 
-{
-    return simple_templ(logrr::log_status::info, where, std::forward<std::vector<LogField>>(dtls), " executed successfully");
-}
-
-
-inline bool Logger::lfailed(const std::string& where, std::vector<LogField>&& dtls) noexcept 
-{
-    return detailed_templ(logrr::log_status::error, where, std::forward<std::vector<LogField>>(dtls), " failed");
-}
-
-inline bool Logger::lfailed(const std::string& where, int line, std::vector<LogField>&& dtls) noexcept 
-{
-    return detailed_templ(logrr::log_status::error, where, std::forward<std::vector<LogField>>(dtls), " failed", "", line);
-}
-
-inline bool Logger::lfailed(const std::string& where, const std::string& file, std::vector<LogField>&& dtls) noexcept 
-{
-    return detailed_templ(logrr::log_status::error, where, std::forward<std::vector<LogField>>(dtls), " failed", file);
-}
-
-inline bool Logger::lfailed(const std::string& where, const std::string& file, int line, std::vector<LogField>&& dtls) noexcept
-{
-    return detailed_templ(logrr::log_status::error, where, std::forward<std::vector<LogField>>(dtls), " failed", file, line);
-}
-
-
-inline bool Logger::lerror(const std::string& where, std::vector<LogField>&& dtls) noexcept 
-{
-    return detailed_templ(logrr::log_status::error, where, std::forward<std::vector<LogField>>(dtls));
-}
-
-inline bool Logger::lerror(const std::string& where, int line, std::vector<LogField>&& dtls) noexcept 
-{
-    return detailed_templ(logrr::log_status::error, where, std::forward<std::vector<LogField>>(dtls), "", "", line);
-}
-
-inline bool Logger::lerror(const std::string& where, const std::string& file, std::vector<LogField>&& dtls) noexcept 
-{
-    return detailed_templ(logrr::log_status::error, where, std::forward<std::vector<LogField>>(dtls), "", file);
-}
-
-inline bool Logger::lerror(const std::string& where, const std::string& file, int line, std::vector<LogField>&& dtls) noexcept
-{
-    return detailed_templ(logrr::log_status::error, where, std::forward<std::vector<LogField>>(dtls), "", file, line);
-}
-
-
-inline bool Logger::lwarning(const std::string& where, std::vector<LogField>&& dtls) noexcept 
-{
-    return detailed_templ(logrr::log_status::warning, where, std::forward<std::vector<LogField>>(dtls));
-}
-
-inline bool Logger::lwarning(const std::string& where, int line, std::vector<LogField>&& dtls) noexcept 
-{
-    return detailed_templ(logrr::log_status::warning, where, std::forward<std::vector<LogField>>(dtls), "", "", line);
-}
-
-inline bool Logger::lwarning(const std::string& where, const std::string& file, std::vector<LogField>&& dtls) noexcept 
-{
-    return detailed_templ(logrr::log_status::warning, where, std::forward<std::vector<LogField>>(dtls), "", file);
-}
-
-inline bool Logger::lwarning(const std::string& where, const std::string& file, int line, std::vector<LogField>&& dtls) noexcept
-{
-    return detailed_templ(logrr::log_status::warning, where, std::forward<std::vector<LogField>>(dtls), "", file, line);
-}
-
-
-inline bool Logger::lcritical(const std::string& where, const std::string& file, int line, std::vector<LogField>&& dtls) noexcept
-{
-    return detailed_templ(logrr::log_status::critical, where, std::forward<std::vector<LogField>>(dtls), "", file, line);
-}
-
-
-inline bool Logger::ldebug(const std::string& where, const std::string& file, int line, std::vector<LogField>&& dtls) noexcept
-{
-    return detailed_templ(logrr::log_status::debug, where, std::forward<std::vector<LogField>>(dtls), "", file, line);
-}
-
-
-inline bool Logger::ltrace(const std::string& where, const std::string& file, int line, std::vector<LogField>&& dtls) noexcept
-{
-    return detailed_templ(logrr::log_status::trace, where, std::forward<std::vector<LogField>>(dtls), "", file, line);
-}
-
 
 bool Logger::flush() noexcept 
 {

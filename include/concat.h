@@ -1,5 +1,5 @@
-#ifndef CONCAT_H
-#define CONCAT_H
+#ifndef CONCAT_INCLUDED
+#define CONCAT_INCLUDED
 
 #include <sstream>
 #include <type_traits>

@@ -1,30 +1,54 @@
-#ifndef HTTP_CONNECTION
-#define HTTP_CONNECTION
+#ifndef HTTP_CONNECTION_INCLUDED
+#define HTTP_CONNECTION_INCLUDED
 
-#include <functional>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <random>
+#include <sstream>
+#include <iomanip>
 
+#include "concat.h"
 #include "logging.h"
-#include "client_structures.h"
+#include "http_codec.h"
+#include "status.h"
+#include "net_constants.h"
 
 
 namespace http {
 
+struct ClientConnection 
+{
+    std::string id;
+    int sockfd = kInvalidSocket;
+    std::string ip = "";
+    uint16_t port = 0;
+};
+
+
 class HttpConnection {
 public:
-    HttpConnection(ClientConnection& client, int bufsize=DEF_RECEPTION_BUF_SIZE);
+    HttpConnection(
+        const ClientConnection& client, 
+        int bufsize=kReceptionBufSize
+    );
+    HttpConnection(
+        const ClientConnection& client, 
+        std::shared_ptr<logrr::Logger> logger, 
+        int bufsize=kReceptionBufSize
+    );
     virtual ~HttpConnection();
-    bool recvReq();
-    bool sendResp();
+    bool process();
 protected:
-    std::string recvRawReq() noexcept;
-    Response makeResp() noexcept;
+    bool recv() noexcept;
+    bool send(const Response& resp) noexcept;
+    bool send() noexcept;
+    bool execution();
     void closeConnection(int& sockfd) noexcept;
-private:
+protected:
     ClientConnection client_; 
-    Request req_;
-    logrr::Logger logger_;
+    std::string req_;
+    std::string resp_;
+    std::shared_ptr<logrr::Logger> logger_ = nullptr;
     int bufsize_;
 };
 

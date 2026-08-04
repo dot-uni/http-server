@@ -191,9 +191,5 @@ std::string_view obsolete_reason(status v)
     return "<unknown-status>";
 }
 
-// std::ostream& operator<<(std::ostream& os, status v)
-// {
-//     return os << obsolete_reason(v);
-// }
 
 } // namesapce http

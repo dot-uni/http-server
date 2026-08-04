@@ -1,3 +1,4 @@
 build/
 server.log
-crypto-simulation-api.md
+crypto-simulation-api*
+log_*

@@ -1,6 +1,7 @@
-#include "client_structures.h"
+#include "uuid.h"
 
-namespace http {
+
+namespace uuid {
 
 std::string generate_uuid_v4() 
 {
@@ -22,4 +23,4 @@ std::string generate_uuid_v4()
     return ss.str();
 }
 
-} // namespace http
+} // namespace uuid

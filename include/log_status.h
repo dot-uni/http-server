@@ -1,5 +1,5 @@
-#ifndef LOG_STATUS
-#define LOG_STATUS
+#ifndef LOG_STATUS_INCLUDED
+#define LOG_STATUS_INCLUDED
 
 #include <string_view>
 
@@ -7,12 +7,12 @@ namespace logrr {
 
 enum class log_status : int16_t 
 {
-    trace = 102,
+    trace = 100,
     debug = 101,
-    info = 100,
-    warning = 0,
-    error = -100,
-    critical = -101
+    info = 102,
+    warning = 103,
+    error = 104,
+    critical = 105
 };
 
 std::string_view obsolete_reason(log_status v);

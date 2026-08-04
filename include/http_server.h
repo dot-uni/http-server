@@ -1,5 +1,5 @@
-#ifndef HTTP_SERVER
-#define HTTP_SERVER
+#ifndef HTTP_SERVER_INCLUDED
+#define HTTP_SERVER_INCLUDED
 
 #include <algorithm>
 #include <iostream>
@@ -21,14 +21,15 @@
 #include "concat.h"
 #include "logging.h"
 #include "http_connection.h"
-#include "client_structures.h"
+#include "net_constants.h"
+#include "uuid.h"
 
 namespace http {
 
-
 class HttpServer {
 public:
-    HttpServer();
+    HttpServer(bool use_logger=true);
+    HttpServer(std::shared_ptr<logrr::ILogSink> logsink, bool use_logger=true);
     virtual ~HttpServer();
     HttpServer(HttpServer&& serv) noexcept;
     HttpServer(const HttpServer&) = delete;
@@ -36,7 +37,12 @@ public:
     HttpServer& operator=(const HttpServer&) = delete;
 
     bool listen();
-    bool listen(const char* host, const char* port=DEF_HTTP_PORT, int max_connections=DEF_MAX_CONNECTIONS, int bufsize=DEF_RECEPTION_BUF_SIZE);
+    bool listen(
+        const char* host, 
+        const char* port=kHttpPort, 
+        int max_connections=kMaxConnections, 
+        int bufsize=kReceptionBufSize
+    );
     bool continueListen();
     void stopListen() noexcept;
     bool addSink(std::shared_ptr<logrr::ILogSink> sink) noexcept;
@@ -48,12 +54,12 @@ protected:
     template <typename Opt> bool applyOption(int sockfd, Opt&& arg, int opt) noexcept;
     bool listenInternal(int max_connections, int bufsize);
     ClientConnection acceptConnection();
-    void moveImpl(HttpServer& serv) noexcept;
-private:
+    void moveImpl(HttpServer&& serv) noexcept;
+protected:
     int sockfd_ = kEmptyDescriptor;
     addrinfo* servinfo_ = nullptr;
     addrinfo hints_;
-    logrr::Logger logger_;
+    std::shared_ptr<logrr::Logger> logger_ = nullptr;
     bool is_running_ = false;
     std::mutex mtx_;
 };

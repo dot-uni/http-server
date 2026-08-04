@@ -1,5 +1,5 @@
-#ifndef STATUS_CODES
-#define STATUS_CODES
+#ifndef STATUS_CODES_INCLUDED
+#define STATUS_CODES_INCLUDED
 
 #include <string_view>
 
@@ -144,10 +144,6 @@ status_class to_status_class(status v);
     @param v The status code to use.
 */
 std::string_view obsolete_reason(status v);
-
-
-/// Outputs the standard reason phrase of a status code to a stream.
-// std::ostream& operator<<(std::ostream&, status);
 
 
 } // namespace http

@@ -11,7 +11,10 @@ std::string_view obsolete_reason(log_status v)
         case log_status::warning:                       return "WARN";
         case log_status::error:                         return "ERROR";
         case log_status::critical:                      return "CRIT";
+        default:
+            break;
     }
+    return "<unknown-log_status>";
 }
 
 } // namespace logrr
