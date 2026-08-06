@@ -1,5 +1,5 @@
-#ifndef CONVERT_TO_STR_INCLUDED
-#define CONVERT_TO_STR_INCLUDED
+#ifndef TO_STRING_INCLUDED
+#define TO_STRING_INCLUDED
 
 #include <string>
 #include <string_view>
@@ -66,6 +66,16 @@ std::string convertToString(T&& value) {
     else {
         static_assert(!sizeof(T*), "Type has no known conversion to std::string");
     }
+}
+
+
+template <typename... Args>
+std::string concat(Args&&... args) {
+    static_assert((::is_streamable_v<Args> && ...), 
+        "concat requires all arguments to support operator<<");
+    std::ostringstream oss;
+    (oss << ... << args);
+    return oss.str();
 }
 
 } // namespace tstr

@@ -7,8 +7,11 @@
 #include <algorithm>
 #include <functional>
 #include <cctype>
+#include <string>
+#include <chrono>
 
 #include "status.h"
+#include "ret_status.h"
 
 namespace http {
     
@@ -37,10 +40,10 @@ struct Request
 {
     std::string method="";
     std::string path="";
-    std::string version="";
+    std::string version="HTTP/1.1";
     std::unordered_map<std::string, std::string, 
                        CaseInsensitiveHash, CaseInsensitiveEqual> headers;
-    nlohmann::json body;
+    nlohmann::ordered_json body;
 };
 
 
@@ -49,9 +52,16 @@ struct Response
     http::status status;
     std::unordered_map<std::string, std::string, 
                        CaseInsensitiveHash, CaseInsensitiveEqual> headers;
-    nlohmann::json body;
+    nlohmann::ordered_json body;
 };
 
+int64_t get_timestamp_ms();
+
+Response makeResp(
+    http::retCode retcode, 
+    const std::string& id, 
+    const nlohmann::ordered_json& result=nlohmann::json::object()
+);
 
 } // namespace http
 

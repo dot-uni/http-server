@@ -36,7 +36,7 @@ std::string SingleLineFormatter::format(const LogRecord& r) const noexcept
 
 std::string JsonFormatter::format(const LogRecord& r) const noexcept 
 {
-    nlohmann::json j = {
+    nlohmann::ordered_json j = {
         {"timepoint", r.timepoint},
         {"status_code", r.status},
         {"status", logrr::obsolete_reason(r.status)},

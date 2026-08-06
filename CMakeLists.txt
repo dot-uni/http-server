@@ -14,9 +14,10 @@ set(SOURCES
     status.cc
     log_status.cc
     logging.cc
+    http_message.cc
     http_server.cc
     http_connection.cc
-    # http_codec.cc
+    http_codec.cc
 )
 list(TRANSFORM SOURCES PREPEND impl/)
 

@@ -18,7 +18,7 @@ bool HttpCodec::parse(const std::string& raw_req) noexcept
 
     if (end_targets == std::string::npos || end_headers == std::string::npos) {
         if (slogger_) slogger_->lBadRequest(__func__, __LINE__, {
-            logrr::field("message", concat('\n', raw_req))
+            logrr::field("message", tostr::concat('\n', raw_req))
         });
         return false;
     }
@@ -93,22 +93,38 @@ bool HttpCodec::parse(const std::string& raw_req) noexcept
 }
 
 
-std::string HttpCodec::process(const std::string& raw_req) {
-    if (!parse(raw_req)) {
-        /**
-         * Возврат Response: status = 400
-         */
-    }
+std::string HttpCodec::serialize(Response& resp) noexcept 
+{
+    if (slogger_) slogger_->lCalled(__func__);
 
-    Router router;
-    Response resp = router.route(); 
-    if (!serialize(resp)) {
-        /**
-         * Возврат Response: status = 500
-         * Как-то мы составили Response не так 
-         */
+    std::string targets = req_.version + " " + tostr::convertToString(resp.status) + " " + std::string(obsolete_reason(resp.status)) + "\r\n";
+    std::string headers = "";
+    std::string body = resp.body.dump(4);
+
+    headers += "Content-Type: " + req_.headers["Content-Type"] + "\r\n";
+    headers += "Content-Length: " + tostr::convertToString(body.size()) + "\r\n";
+    for (auto&& [key, value] : resp.headers) {
+        headers += key + ": " + value + "\r\n";
     }
-    return resp_;
+    headers += "\r\n";
+
+    if (slogger_) slogger_->lExeced(__func__);
+    return targets + headers + body;
+}
+
+
+std::string HttpCodec::process(const std::string& raw_req, const std::string& id) {
+    Response resp;
+    if (!parse(raw_req)) {
+        resp = makeResp(retCode::InvalidJsonOrParams, id);
+    }
+#if 0
+    else {
+        Router router;
+        resp = router.route(); 
+    }
+#endif
+    return serialize(resp);
 }
 
 } // namespace http

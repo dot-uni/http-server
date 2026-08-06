@@ -27,10 +27,10 @@ HttpConnection::~HttpConnection()
     closeConnection(client_.sockfd);
 
     if (logger_) logger_->lExeced(__func__, {
-        logrr::field("message", "Client socket was closed"),
         logrr::field("client_id", client_.id),
         logrr::field("client_ip", client_.ip),
-        logrr::field("client_port", client_.port)
+        logrr::field("client_port", client_.port),
+        logrr::field("message", "Client socket was closed")
     });
 }
 
@@ -71,10 +71,10 @@ bool HttpConnection::recv() noexcept
         req.append(buf);
 
         if (logger_) logger_->lInfo(__func__, {
-            logrr::field("message", concat(numbytes, " bytes were received")),
             logrr::field("client_id", client_.id),
             logrr::field("client_ip", client_.ip),
-            logrr::field("client_port", client_.port)
+            logrr::field("client_port", client_.port),
+            logrr::field("message", tostr::concat(numbytes, " bytes were received"))
         });
 
         if (numbytes < bufsize_) break;
@@ -83,18 +83,27 @@ bool HttpConnection::recv() noexcept
     req_ = std::move(req);
     
     if (logger_) logger_->lExeced(__func__, {
-        logrr::field("message", concat("A total of ", resbytes, " bytes received from the client")),
         logrr::field("client_id", client_.id),
         logrr::field("client_ip", client_.ip),
-        logrr::field("client_port", client_.port)
+        logrr::field("client_port", client_.port),
+        logrr::field("message", tostr::concat("A total of ", resbytes, " bytes received from the client"))
     });
     return true;
 }
 
 
 bool HttpConnection::execution() {
-    HttpCodec codec;
-    resp_ = codec.process(req_); 
+    if (logger_) logger_->lCalled(__func__);
+
+    HttpCodec codec(logger_);
+    resp_ = codec.process(req_, client_.id); 
+
+    if (logger_) logger_->lExeced(__func__, {
+        logrr::field("client_id", client_.id),
+        logrr::field("client_ip", client_.ip),
+        logrr::field("client_port", client_.port),
+        logrr::field("message", tostr::concat("RESPONSE:\n", resp_))
+    });
     return true;
 }
 

@@ -7,7 +7,6 @@
 #include <sstream>
 #include <iomanip>
 
-#include "concat.h"
 #include "logging.h"
 #include "http_codec.h"
 #include "status.h"

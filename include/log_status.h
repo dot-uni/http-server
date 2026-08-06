@@ -5,6 +5,10 @@
 
 namespace logrr {
 
+/**
+ * Codes used for Logging
+ */
+
 enum class log_status : int16_t 
 {
     trace = 100,

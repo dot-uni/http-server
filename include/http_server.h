@@ -18,7 +18,6 @@
 #include <sstream>
 #include <type_traits>
 
-#include "concat.h"
 #include "logging.h"
 #include "http_connection.h"
 #include "net_constants.h"

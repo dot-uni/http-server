@@ -6,10 +6,10 @@
 #include <unordered_map>
 #include <memory>
 
-#include "concat.h"
 #include "status_logging.h"
 #include "status.h"
 #include "http_message.h"
+#include "tostring.h"
 #if 0
 #include "router.h"
 #endif
@@ -22,14 +22,13 @@ class HttpCodec
 public:
     HttpCodec() = default;
     HttpCodec(std::shared_ptr<logrr::Logger>);
-    virtual ~HttpCodec();
-    std::string process(const std::string& raw_req);
+    virtual ~HttpCodec() = default;
+    std::string process(const std::string& raw_req, const std::string& id);
 protected:
-    bool parse(const std::string&  raw_req) noexcept;
-    bool serialize(Response& resp) noexcept;
+    bool parse(const std::string& raw_req) noexcept;
+    std::string serialize(Response& resp) noexcept;
 protected:
     Request req_;
-    std::string resp_;
     std::shared_ptr<logrr::StatusLogger> slogger_ = nullptr;
 };
 
