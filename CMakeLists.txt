@@ -14,6 +14,7 @@ set(SOURCES
     status.cc
     log_status.cc
     logging.cc
+    status_logging.cc
     http_message.cc
     http_server.cc
     http_connection.cc
