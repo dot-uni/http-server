@@ -6,7 +6,7 @@
 namespace logrr {
 
 /**
- * Codes used for Logging
+ * Codes used for internal logging
  */
 
 enum class log_status : int16_t 

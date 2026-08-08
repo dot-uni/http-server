@@ -3,6 +3,7 @@
 
 #include "logging.h"
 #include "status.h"
+#include "ret_status.h"
 
 namespace logrr {
 
@@ -12,13 +13,17 @@ public:
     StatusLogger() = default;
     virtual ~StatusLogger() = default;
 public:
-    bool lOk(const std::string& where) noexcept;
-    bool lOk(const std::string& where, std::vector<LogField>&& dtls) noexcept;
+    bool log(http::retCode code, const std::string& where) noexcept;
+    bool log(http::retCode code, const std::string& where, std::vector<LogField>&& add_dtls) noexcept;
+    bool log(http::retCode code, const std::string& where, int line, std::vector<LogField>&& add_dtls={}) noexcept;
+    bool log(http::retCode code, const std::string& where, const std::string& file, std::vector<LogField>&& add_dtls={}) noexcept;
+    bool log(http::retCode code, const std::string& where, const std::string& file, int line, std::vector<LogField>&& add_dtls={}) noexcept;
 
-    bool lBadRequest(const std::string& where, std::vector<LogField>&& dtls) noexcept;
-    bool lBadRequest(const std::string& where, int line, std::vector<LogField>&& dtls) noexcept;
-    bool lBadRequest(const std::string& where, const std::string& file, std::vector<LogField>&& dtls) noexcept;
-    bool lBadRequest(const std::string& where, const std::string& file, int line, std::vector<LogField>&& dtls) noexcept;
+    bool log(http::status code, const std::string& where) noexcept;
+    bool log(http::status code, const std::string& where, std::vector<LogField>&& add_dtls) noexcept;
+    bool log(http::status code, const std::string& where, int line, std::vector<LogField>&& add_dtls={}) noexcept;
+    bool log(http::status code, const std::string& where, const std::string& file, std::vector<LogField>&& add_dtls={}) noexcept;
+    bool log(http::status code, const std::string& where, const std::string& file, int line, std::vector<LogField>&& add_dtls={}) noexcept;
 };
 
 } // namespace logrr 

@@ -7,6 +7,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(fmt CONFIG REQUIRED)
 find_package(nlohmann_json 3.12.0 REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 set(SOURCES
     server.cc
@@ -15,6 +16,7 @@ set(SOURCES
     log_status.cc
     logging.cc
     status_logging.cc
+    router.cc
     http_message.cc
     http_server.cc
     http_connection.cc
@@ -26,3 +28,4 @@ add_executable(server ${SOURCES})
 target_include_directories(server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(server PRIVATE nlohmann_json::nlohmann_json)
 target_link_libraries(server PRIVATE fmt::fmt)
+target_link_libraries(server PRIVATE OpenSSL::Crypto)

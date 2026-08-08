@@ -7,9 +7,11 @@
 #include <sstream>
 #include <iomanip>
 
-#include "logging.h"
+#include "status_logging.h"
 #include "http_codec.h"
+#include "http_message.h"
 #include "status.h"
+#include "ret_status.h"
 #include "net_constants.h"
 
 
@@ -35,19 +37,22 @@ public:
         std::shared_ptr<logrr::Logger> logger, 
         int bufsize=kReceptionBufSize
     );
+    HttpConnection(
+        const ClientConnection& client, 
+        std::shared_ptr<logrr::StatusLogger> slogger, 
+        int bufsize=kReceptionBufSize
+    );
     virtual ~HttpConnection();
-    bool process();
+    void process();
 protected:
     bool recv() noexcept;
-    bool send(const Response& resp) noexcept;
-    bool send() noexcept;
-    bool execution();
+    void send(const std::string&) noexcept;
+    std::string execution() noexcept;
     void closeConnection(int& sockfd) noexcept;
 protected:
     ClientConnection client_; 
     std::string req_;
-    std::string resp_;
-    std::shared_ptr<logrr::Logger> logger_ = nullptr;
+    std::shared_ptr<logrr::StatusLogger> slogger_ = nullptr;
     int bufsize_;
 };
 

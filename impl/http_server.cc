@@ -285,10 +285,7 @@ bool HttpServer::listenInternal(int max_connections, int bufsize)
         if (client.sockfd == kInvalidSocket) continue;
         
         HttpConnection connection(client, logger_, bufsize);
-        if (!connection.process()) {
-            continue;
-        }
-        break;
+        connection.process();
     }
 
     if (logger_) logger_->lExeced(__func__);

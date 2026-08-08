@@ -7,20 +7,14 @@ namespace http {
 HttpCodec::HttpCodec(std::shared_ptr<logrr::Logger> logger) 
     : slogger_(std::static_pointer_cast<logrr::StatusLogger>(logger)) {}
 
-
-bool HttpCodec::parse(const std::string& raw_req) noexcept 
+Request HttpCodec::parse(const std::string& raw_req) 
 {
-    if (slogger_) slogger_->lCalled(__func__);
-
     Request req;
     int end_targets = raw_req.find("\r\n");
     int end_headers = raw_req.find("\r\n\r\n");
 
     if (end_targets == std::string::npos || end_headers == std::string::npos) {
-        if (slogger_) slogger_->lBadRequest(__func__, __LINE__, {
-            logrr::field("message", tostr::concat('\n', raw_req))
-        });
-        return false;
+        throw std::invalid_argument(tostr::concat('\n', raw_req));
     }
 
     std::string targets = raw_req.substr(0, end_targets);
@@ -34,14 +28,12 @@ bool HttpCodec::parse(const std::string& raw_req) noexcept
     req.path = targets.substr(first_space, second_space);
     req.version = targets.substr(second_space);
 
+
     /// parse header
     int beg = 0;
     int end = headers.find("\r\n"), colon;
     if (end == std::string::npos) {
-        if (slogger_) slogger_->lBadRequest(__func__, __LINE__, {
-            logrr::field("message", "The header field is missing from the request")
-        });
-        return false;
+        throw std::invalid_argument("The header field is missing from the request");
     }
 
     while(true) {
@@ -66,12 +58,8 @@ bool HttpCodec::parse(const std::string& raw_req) noexcept
         if (end == std::string::npos) break;
     }
     if (!req.headers.count("Host")) {
-        if (slogger_) slogger_->lBadRequest(__func__, __LINE__, {
-            logrr::field("message", "Host is not specified in header")
-        });
-        return false;
+        throw std::invalid_argument("Host is not specified in header");
     }
-
 
     /// parse body
     try {
@@ -79,52 +67,60 @@ bool HttpCodec::parse(const std::string& raw_req) noexcept
             req.body = nlohmann::json::parse(body); 
         }
     } catch(nlohmann::json::parse_error& mess) {
-        if (slogger_) slogger_->lBadRequest(__func__, __LINE__, {
-            logrr::field("message", "The provided body is not in JSON format")
-        });
-        return false;
+        throw std::invalid_argument("The provided body is not in JSON format");
     }
 
-
-    req_ = std::move(req);
-
-    if (slogger_) slogger_->lExeced(__func__);
-    return true;
+    return req;
 }
 
 
 std::string HttpCodec::serialize(Response& resp) noexcept 
 {
-    if (slogger_) slogger_->lCalled(__func__);
-
-    std::string targets = req_.version + " " + tostr::convertToString(resp.status) + " " + std::string(obsolete_reason(resp.status)) + "\r\n";
+    std::string targets =  "HTTP/1.1 " + tostr::convertToString(resp.status) + " " + std::string(obsolete_reason(resp.status)) + "\r\n";
     std::string headers = "";
     std::string body = resp.body.dump(4);
 
-    headers += "Content-Type: " + req_.headers["Content-Type"] + "\r\n";
+    headers += "Content-Type: application/json\r\n";
     headers += "Content-Length: " + tostr::convertToString(body.size()) + "\r\n";
     for (auto&& [key, value] : resp.headers) {
         headers += key + ": " + value + "\r\n";
     }
     headers += "\r\n";
 
-    if (slogger_) slogger_->lExeced(__func__);
     return targets + headers + body;
 }
 
+bool HttpCodec::parse_w(const std::string& raw_req) 
+{
+    if (slogger_) slogger_->lCalled(__func__);
+
+    try {
+        req_ = HttpCodec::parse(raw_req);
+    } catch(std::invalid_argument& mess) {
+        if (slogger_) slogger_->log(retCode::InvalidJsonOrParams, __func__, __LINE__, {
+            logrr::field("message", mess.what())
+        });
+        return false;
+    }
+
+    if (slogger_) slogger_->lExeced(__func__);
+    return true;
+}
 
 std::string HttpCodec::process(const std::string& raw_req, const std::string& id) {
+    if (slogger_) slogger_->lCalled(__func__);
+
     Response resp;
-    if (!parse(raw_req)) {
+    if (!parse_w(raw_req)) {
         resp = makeResp(retCode::InvalidJsonOrParams, id);
     }
-#if 0
     else {
-        Router router;
-        resp = router.route(); 
+        Router router(slogger_);
+        resp = router.route(std::forward<Request>(req_), id); 
     }
-#endif
-    return serialize(resp);
+
+    if (slogger_) slogger_->lExeced(__func__);
+    return HttpCodec::serialize(resp);
 }
 
 } // namespace http
